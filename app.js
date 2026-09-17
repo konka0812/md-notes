@@ -1454,12 +1454,16 @@ function exportAll() {
 }
 
 async function backupJSON() {
-  const images = Object.entries(imageCache).map(([id, dataUrl]) => ({ id, dataUrl }));
-  const sources = await sourcesForBackup();
-  const data = { app: '纸墨', version: 3, exportedAt: new Date().toISOString(), notes, images, sources };
-  const date = new Date().toISOString().slice(0, 10);
-  download(`纸墨备份-${date}.json`, JSON.stringify(data, null, 2), 'application/json;charset=utf-8');
-  toast('已备份为 JSON');
+  try {
+    const images = Object.entries(imageCache).map(([id, dataUrl]) => ({ id, dataUrl }));
+    const sources = await sourcesForBackup();
+    const data = { app: '纸墨', version: 3, exportedAt: new Date().toISOString(), notes, images, sources };
+    const date = new Date().toISOString().slice(0, 10);
+    download(`纸墨备份-${date}.json`, JSON.stringify(data, null, 2), 'application/json;charset=utf-8');
+    toast('已备份为 JSON');
+  } catch (e) {
+    toast('备份失败：' + ((e && e.message) || '未知错误'));
+  }
 }
 
 async function importMD(file, handle) {

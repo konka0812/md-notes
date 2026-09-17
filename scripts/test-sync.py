@@ -428,6 +428,17 @@ with sync_playwright() as p:
     }""")
     check("彻底删除后清理来源", pr.evaluate("async () => (await getAllSources()).length") == 0)
 
+    # 未删除的笔记，其来源不能被 emptyTrash 误删
+    pr.evaluate("""async () => {
+        await putNote({ id: 'keep-1', title: '保留', content: 'x', createdAt: 1, updatedAt: 1 });
+        await saveSource({ noteId: 'keep-1', name: 'keep.md', lastModified: 1, size: 1, contentHash: 'h', syncedAt: 1 });
+        await putNote({ id: 'gone-1', title: '待删', content: 'x', createdAt: 1, updatedAt: 1, deletedAt: Date.now() });
+        await saveSource({ noteId: 'gone-1', name: 'gone.md', lastModified: 1, size: 1, contentHash: 'h', syncedAt: 1 });
+        await emptyTrash();
+    }""")
+    check("emptyTrash 保留未删除笔记的来源", pr.evaluate("async () => (await getSource('keep-1')) !== null") is True)
+    check("emptyTrash 删除已删笔记的来源", pr.evaluate("async () => (await getSource('gone-1')) === null") is True)
+
     # 过期笔记的自动清理也应清理来源
     pr.evaluate("""async () => {
         await putNote({ id: 'old-1', title: '过期', content: 'x', createdAt: 1, updatedAt: 1, deletedAt: Date.now() - 31 * 24 * 3600 * 1000 });
@@ -450,7 +461,8 @@ with sync_playwright() as p:
     pr.wait_for_selector("#editor-view.active")
     pr.wait_for_timeout(400)
     check("恢复后来源条显示文件名", "restored.md" in pr.locator("#source-name").inner_text())
-    check("恢复后无句柄则无写回按钮", pr.locator("#btn-source-write").is_hidden())
+    check("恢复后来源记录不含 handle", pr.evaluate("async () => !('handle' in (await getSource('n1')))") is True)
+    check("恢复后来源条无写回按钮", pr.locator("#btn-source-write").is_hidden())
     ctx_r.close()
 
     # ---- v2 -> v3 迁移不丢数据（独立上下文，直接调用应用的 openDB） ----

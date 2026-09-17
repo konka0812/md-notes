@@ -82,7 +82,20 @@ const quickbar = $('#quickbar');
 const appNameEl = $('#app-name');
 const appSubEl = $('#app-sub');
 const btnTrashBack = $('#btn-trash-back');
-const APP_VERSION = 'v12';
+const APP_VERSION = 'v13';
+
+/* ---------------- 主题风格 ---------------- */
+const THEME_STYLES = [
+  { id: '',           label: '纸张',       color: { light: '#FDFBF7', dark: '#1E1C17' } },
+  { id: 'sketch',     label: '手绘',       color: { light: '#FDFBF7', dark: '#1E1C17' } },
+  { id: 'typewriter', label: '复古打字机', color: { light: '#FCF9F0', dark: '#16140F' } },
+  { id: 'forest',     label: '森系自然',   color: { light: '#FAFCF6', dark: '#111A12' } }
+];
+function themeColorFor(theme, style) {
+  const s = THEME_STYLES.find((x) => x.id === (style || ''));
+  const base = s || THEME_STYLES[0];
+  return base.color[theme === 'dark' ? 'dark' : 'light'];
+}
 
 /* ---------------- 状态 ---------------- */
 let db = null;
@@ -1137,7 +1150,7 @@ function applyTheme(t, style) {
   localStorage.setItem('style', style || '');
   btnTheme.innerHTML = icon(t === 'dark' ? 'sun' : 'moon', 22);
   const mc = document.querySelector('meta[name="theme-color"]');
-  if (mc) mc.setAttribute('content', t === 'dark' ? '#1E1C17' : '#FDFBF7');
+  if (mc) mc.setAttribute('content', themeColorFor(t, style));
 }
 function initTheme() {
   const saved = localStorage.getItem('theme');
@@ -1151,23 +1164,21 @@ function toggleTheme() {
   applyTheme(cur === 'dark' ? 'light' : 'dark', style);
 }
 function showThemePicker() {
-  const curTheme = document.documentElement.getAttribute('data-theme') || 'light';
   const curStyle = document.documentElement.getAttribute('data-style') || '';
-  const opts = [
-    ['light', '', '纸张 · 浅色'],
-    ['dark', '', '纸张 · 深色'],
-    ['light', 'sketch', '手绘 · 浅色'],
-    ['dark', 'sketch', '手绘 · 深色']
-  ];
-  const items = opts.map(([theme, style, label]) => {
-    const selected = (theme === curTheme && style === curStyle);
-    return {
-      icon: selected ? 'check' : '',
-      label: label,
-      action: () => { applyTheme(theme, style); toast('已切换：' + label); }
-    };
-  });
-  showSheet('选择主题', items);
+  const items = THEME_STYLES.map((s) => ({
+    icon: s.id === curStyle ? 'check' : '',
+    label: s.label,
+    action: () => showThemeDarkPicker(s)
+  }));
+  showSheet('选择风格', items);
+}
+
+function showThemeDarkPicker(style) {
+  const curTheme = document.documentElement.getAttribute('data-theme') || 'light';
+  showSheet(style.label + ' · 明暗', [
+    { icon: curTheme === 'light' ? 'check' : '', label: '浅色', action: () => { applyTheme('light', style.id); toast('已切换：' + style.label + ' · 浅色'); } },
+    { icon: curTheme === 'dark' ? 'check' : '', label: '深色', action: () => { applyTheme('dark', style.id); toast('已切换：' + style.label + ' · 深色'); } }
+  ]);
 }
 
 /* ---------------- PWA ---------------- */

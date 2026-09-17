@@ -4,7 +4,7 @@
    策略：网络优先、断网回退缓存
    （联网时始终取最新代码，避免更新后一直显示旧版；断网时才用缓存，保留离线能力） */
 
-const CACHE = 'zhimo-notes-v12';
+const CACHE = 'zhimo-notes-v13';
 const ASSETS = [
   './',
   './index.html',

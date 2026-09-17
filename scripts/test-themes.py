@@ -114,12 +114,14 @@ with sync_playwright() as p:
         return {
             accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
             radius: item.borderRadius,
-            shadow: item.boxShadow
+            shadow: item.boxShadow,
+            borderLeft: item.borderLeftWidth + ' ' + item.borderLeftStyle + ' ' + item.borderLeftColor
         };
     }""")
     check("森系 强调色为苔绿", fo["accent"].upper() == "#4C7A3F", fo["accent"])
     check("森系 大圆角(>=16px)", float(fo["radius"].replace("px", "").split()[0]) >= 16, fo["radius"])
-    check("森系 柔和阴影(无硬偏移)", "0px 0px" in fo["shadow"] or "rgba" in fo["shadow"], fo["shadow"])
+    check("森系 卡片左侧苔绿色条", fo["borderLeft"] == "3px solid rgb(76, 122, 63)", fo["borderLeft"])
+    check("森系 柔和阴影为森林色系", "rgba(35, 47, 30" in fo["shadow"], fo["shadow"])
 
     browser.close()
 

@@ -85,6 +85,74 @@ with sync_playwright() as p:
     page.click("#btn-back")
     page.wait_for_selector("#list-view.active")
 
+    # ---- 同步：本地文件更新 -> 网页更新 ----
+    page.locator(".note-item", has_text="Report").first.click()
+    page.wait_for_selector("#editor-view.active")
+    page.wait_for_timeout(300)
+    page.evaluate("() => { pendingSyncSource = currentSource; }")
+    page.set_input_files("#file-sync", {"name": "report.md", "mimeType": "text/markdown", "buffer": MD_V2.encode("utf-8")})
+    page.wait_for_timeout(700)
+    check("同步后正文更新", "v2 正文" in page.input_value("#editor"), page.input_value("#editor")[:40])
+    srcs = page.evaluate("async () => await getAllSources()")
+    check("同步后哈希已更新", srcs[0]["contentHash"] != h_v1, srcs[0]["contentHash"])
+
+    # ---- 再同步同一文件：无变化 ----
+    page.evaluate("() => { pendingSyncSource = currentSource; }")
+    page.set_input_files("#file-sync", {"name": "report.md", "mimeType": "text/markdown", "buffer": MD_V2.encode("utf-8")})
+    page.wait_for_timeout(600)
+    check("无变化时正文不变", "v2 正文" in page.input_value("#editor"))
+    check("无变化时不弹冲突面板", page.locator("#sheet").is_hidden())
+
+    # ---- 冲突：网页也改过 + 文件也变了 ----
+    page.fill("#editor", "# Report\n\n网页版内容")
+    page.wait_for_timeout(900)  # 等自动保存，updatedAt 晚于 syncedAt
+    page.evaluate("() => { pendingSyncSource = currentSource; }")
+    page.set_input_files("#file-sync", {"name": "report.md", "mimeType": "text/markdown", "buffer": b"# Report\n\nv3 \xe6\x96\x87\xe4\xbb\xb6"})
+    page.wait_for_timeout(700)
+    page.wait_for_selector("#sheet:not([hidden])")
+    items = page.locator("#sheet .sheet-item").all_inner_texts()
+    check("冲突面板提供3个选项", len(items) == 3, items)
+    check("冲突面板含'用本地文件覆盖'", any("覆盖" in t for t in items), items)
+    check("冲突面板含'保留网页版'", any("保留网页版" in t for t in items), items)
+    check("冲突面板含'都保留'", any("都保留" in t for t in items), items)
+
+    # 选「用本地文件覆盖」
+    page.locator("#sheet .sheet-item", has_text="用本地文件覆盖").click()
+    page.wait_for_timeout(700)
+    check("覆盖后正文为文件内容", "v3 文件" in page.input_value("#editor"), page.input_value("#editor")[:40])
+
+    # ---- 冲突：选「保留网页版」 ----
+    page.fill("#editor", "# Report\n\n网页版二")
+    page.wait_for_timeout(900)
+    page.evaluate("() => { pendingSyncSource = currentSource; }")
+    page.set_input_files("#file-sync", {"name": "report.md", "mimeType": "text/markdown", "buffer": b"# Report\n\nv4 \xe6\x96\x87\xe4\xbb\xb6"})
+    page.wait_for_timeout(700)
+    page.wait_for_selector("#sheet:not([hidden])")
+    page.locator("#sheet .sheet-item", has_text="保留网页版").click()
+    page.wait_for_timeout(700)
+    check("保留网页版后正文不变", "网页版二" in page.input_value("#editor"))
+
+    # 再次同步同一文件应无变化、不弹冲突
+    page.evaluate("() => { pendingSyncSource = currentSource; }")
+    page.set_input_files("#file-sync", {"name": "report.md", "mimeType": "text/markdown", "buffer": b"# Report\n\nv4 \xe6\x96\x87\xe4\xbb\xb6"})
+    page.wait_for_timeout(700)
+    check("保留网页版后不再重复冲突", page.locator("#sheet").is_hidden())
+
+    # ---- 冲突：选「都保留」 ----
+    page.fill("#editor", "# Report\n\n网页版三")
+    page.wait_for_timeout(900)
+    page.evaluate("() => { pendingSyncSource = currentSource; }")
+    page.set_input_files("#file-sync", {"name": "report.md", "mimeType": "text/markdown", "buffer": b"# Report\n\nv5 \xe6\x96\x87\xe4\xbb\xb6"})
+    page.wait_for_timeout(700)
+    page.wait_for_selector("#sheet:not([hidden])")
+    page.locator("#sheet .sheet-item", has_text="都保留").click()
+    page.wait_for_timeout(800)
+    check("都保留后当前正文不变", "网页版三" in page.input_value("#editor"))
+
+    page.click("#btn-back")
+    page.wait_for_selector("#list-view.active")
+    check("都保留后多出一篇笔记", page.locator(".note-item").count() == 2, page.locator(".note-item").count())
+
     # ---- v2 -> v3 迁移不丢数据（独立上下文，直接调用应用的 openDB） ----
     ctx_mig = browser.new_context(viewport={"width": 390, "height": 844})
     pm = ctx_mig.new_page()

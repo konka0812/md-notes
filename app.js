@@ -691,6 +691,103 @@ async function refreshSourceBar(noteId) {
   btnSourceWrite.hidden = !(canUseFileHandles && src.handle);
 }
 
+/* 把文件内容写入笔记，并把文件状态记为基线 */
+async function applyFileToNote(note, content, src, file) {
+  note.content = content;
+  note.updatedAt = Date.now();
+  const m = content.match(/^\s*#\s+(.+)$/m);
+  if (m) note.title = m[1].trim();
+  await putNote(note);
+  await markFileAsBaseline(src, file, content);
+  const idx = notes.findIndex((x) => x.id === note.id);
+  if (idx >= 0) notes[idx] = note;
+  if (currentId === note.id) {
+    editor.value = content;
+    titleInput.value = note.title || '';
+    updateWordCount();
+    if (isPreview) updatePreview();
+  }
+  await renderList();
+}
+
+/* 冲突：网页与文件都改过 —— 用三选项面板代替两按钮对话框 */
+function resolveConflict(note, content, src, file) {
+  showSheet('本地与网页都有改动', [
+    { icon: 'download', label: '用本地文件覆盖', action: async () => {
+        await applyFileToNote(note, content, src, file);
+        toast('已用本地文件覆盖');
+      } },
+    { icon: 'check', label: '保留网页版', action: async () => {
+        await markFileAsBaseline(src, file, content);
+        toast('已保留网页版');
+      } },
+    { icon: 'plus', label: '都保留（文件另存为新笔记）', action: async () => {
+        await createNoteFromFile(content, file, src);
+        toast('已另存为新笔记');
+      } }
+  ]);
+}
+
+/* 用文件内容新建一篇笔记（冲突时选「都保留」） */
+async function createNoteFromFile(content, file, src) {
+  const baseName = file.name.replace(/\.(md|markdown|txt)$/i, '');
+  const m = content.match(/^\s*#\s+(.+)$/m);
+  const note = {
+    id: uid(),
+    title: (m ? m[1].trim() : baseName) + '（来自文件）',
+    content,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  await putNote(note);
+  const newSrc = {
+    noteId: note.id, name: file.name, lastModified: file.lastModified,
+    size: file.size, contentHash: hashString(content), syncedAt: Date.now()
+  };
+  if (src.handle) newSrc.handle = src.handle;
+  await saveSource(newSrc);
+  await markFileAsBaseline(src, file, content);
+  await renderList();
+}
+
+/* 用文件同步到笔记。返回 'same' | 'updated' | 'conflict' | 'missing' */
+async function syncFromFile(file, src) {
+  const content = await file.text();
+  if (hashString(content) === src.contentHash) {
+    await markFileAsBaseline(src, file, content);
+    return 'same';
+  }
+  const note = await getNote(src.noteId);
+  if (!note) { await deleteSource(src.noteId); return 'missing'; }
+  const webChanged = hashString(note.content || '') !== src.contentHash;
+  if (webChanged) { resolveConflict(note, content, src, file); return 'conflict'; }
+  await applyFileToNote(note, content, src, file);
+  return 'updated';
+}
+
+/* 同步按钮：Chromium 用句柄，其它浏览器让用户重选同名文件 */
+async function syncCurrentSource() {
+  if (!currentSource || !currentId) return;
+  if (currentSource.handle && canUseFileHandles) {
+    try {
+      let perm = await currentSource.handle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') perm = await currentSource.handle.requestPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') { toast('未获得文件访问权限'); return; }
+      const file = await currentSource.handle.getFile();
+      const r = await syncFromFile(file, currentSource);
+      if (r === 'same') toast('已是最新');
+      else if (r === 'updated') toast('已从本地文件更新');
+      else if (r === 'missing') toast('笔记已不存在，已移除关联');
+      await refreshSourceBar(currentId);
+    } catch (e) {
+      toast('读取失败：文件可能已被移动或删除');
+    }
+    return;
+  }
+  pendingSyncSource = currentSource;
+  fileSync.click();
+}
+
 async function openNote(id) {
   const note = await getNote(id);
   if (!note) return;
@@ -1147,16 +1244,20 @@ function openEditorMenu() {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const cur = notes.find((x) => x.id === currentId);
   const pinned = cur && cur.pinned;
-  showSheet('笔记', [
+  const items = [
     { icon: 'pin', label: pinned ? '取消置顶' : '置顶', action: togglePinCurrent },
     { icon: 'eye', label: isFocusMode ? '退出专注模式' : '专注模式', action: toggleFocusMode },
     { icon: 'image', label: '插入本地图片', action: () => fileImage.click() },
     { icon: 'tag', label: '编辑标签', action: editTags },
     { icon: 'download', label: '导出为 .md', action: exportCurrent },
-    { icon: 'file-text', label: '导出为 PDF', action: exportPDF },
-    { icon: isDark ? 'sun' : 'moon', label: '切换深色 / 浅色', action: toggleTheme },
-    { icon: 'trash', label: '删除此篇', danger: true, action: confirmDeleteCurrent }
-  ]);
+    { icon: 'file-text', label: '导出为 PDF', action: exportPDF }
+  ];
+  if (currentSource) {
+    items.push({ icon: 'refresh', label: '同步本地文件', action: syncCurrentSource });
+  }
+  items.push({ icon: isDark ? 'sun' : 'moon', label: '切换深色 / 浅色', action: toggleTheme });
+  items.push({ icon: 'trash', label: '删除此篇', danger: true, action: confirmDeleteCurrent });
+  showSheet('笔记', items);
 }
 
 /* ---------------- 导出 / 导入 ---------------- */
@@ -1492,6 +1593,7 @@ function bindEvents() {
     }
     fileSync.value = '';
   });
+  btnSourceSync.addEventListener('click', syncCurrentSource);
   fileJson.addEventListener('change', () => {
     if (fileJson.files[0]) restoreJSON(fileJson.files[0]);
     fileJson.value = '';

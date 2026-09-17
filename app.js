@@ -670,21 +670,25 @@ function exitTrash() {
 
 /* ---------------- 编辑器 ---------------- */
 /* ---------------- 来源条 ---------------- */
-async function refreshSourceBar() {
-  if (!currentId) {
-    currentSource = null;
-    sourceBar.hidden = true;
-    return;
+async function refreshSourceBar(noteId) {
+  if (!noteId || noteId !== currentId) return;
+  let src = null;
+  try {
+    src = await getSource(noteId);
+  } catch (e) {
+    src = null;
   }
-  currentSource = await getSource(currentId);
-  if (!currentSource) {
+  if (noteId !== currentId) return;   // 期间已切换到别的笔记，丢弃本次结果
+  currentSource = src;
+  if (!src) {
     sourceBar.hidden = true;
+    btnSourceWrite.hidden = true;
     return;
   }
   sourceBar.hidden = false;
-  sourceNameEl.textContent = currentSource.name || '未命名文件';
+  sourceNameEl.textContent = src.name || '未命名文件';
   sourceStateEl.textContent = '已同步';
-  btnSourceWrite.hidden = !(canUseFileHandles && currentSource.handle);
+  btnSourceWrite.hidden = !(canUseFileHandles && src.handle);
 }
 
 async function openNote(id) {
@@ -703,7 +707,7 @@ async function openNote(id) {
   editorView.classList.add('active');
   window.scrollTo(0, 0);
   requestAnimationFrame(() => { (note.title ? editor : titleInput).focus(); });
-  await refreshSourceBar();
+  await refreshSourceBar(note.id);
 }
 
 async function newNote() {
@@ -1215,17 +1219,23 @@ async function importMD(file, handle) {
   const title = m ? m[1].trim() : baseName;
   const note = { id: uid(), title, content, createdAt: Date.now(), updatedAt: Date.now() };
   await putNote(note);
-  await saveSource({
+  const src = {
     noteId: note.id,
     name: file.name,
     lastModified: file.lastModified,
     size: file.size,
     contentHash: hashString(content),
-    syncedAt: Date.now(),
-    handle: handle || undefined
-  });
+    syncedAt: Date.now()
+  };
+  if (handle) src.handle = handle;
+  let savedSource = true;
+  try {
+    await saveSource(src);
+  } catch (e) {
+    savedSource = false;
+  }
   await renderList();
-  toast('已导入：' + title);
+  toast(savedSource ? '已导入：' + title : '已导入「' + title + '」，但未能记录文件关联');
 }
 
 /* 导入入口：Chromium 取文件句柄以便后续同步，其它浏览器走 input 降级 */
@@ -1238,7 +1248,9 @@ async function startImportMD() {
       });
       const file = await handle.getFile();
       await importMD(file, handle);
-    } catch (e) { /* 用户取消，忽略 */ }
+    } catch (e) {
+      if (!e || e.name !== 'AbortError') toast('导入失败：' + ((e && e.message) || '未知错误'));
+    }
     return;
   }
   fileMd.click();
@@ -1464,7 +1476,7 @@ function bindEvents() {
   editor.addEventListener('input', () => { scheduleSave(); updateWordCount(); });
 
   fileMd.addEventListener('change', () => {
-    if (fileMd.files[0]) importMD(fileMd.files[0]);
+    if (fileMd.files[0]) importMD(fileMd.files[0]).catch(() => toast('导入失败'));
     fileMd.value = '';
   });
   fileSync.addEventListener('change', () => {

@@ -55,7 +55,8 @@ with sync_playwright() as p:
     check("备份剔除 handle", res["hasHandle"] is False, res)
 
     # ---- 导入（降级路径）并建立来源关联 ----
-    page.evaluate("async () => await clearAllSources()")  # 清掉上面用例写入的来源夹具
+    # 上面的来源存储用例在同一页面上下文写入了夹具 n1/n2，此处需要干净起点才能断言数量
+    page.evaluate("async () => await clearAllSources()")
     page.set_input_files("#file-md", {"name": "report.md", "mimeType": "text/markdown", "buffer": MD_V1.encode("utf-8")})
     page.wait_for_timeout(600)
     check("导入后列表有1篇", page.locator(".note-item").count() == 1)
@@ -72,6 +73,17 @@ with sync_playwright() as p:
     check("来源条有同步按钮", page.locator("#btn-source-sync").is_visible())
     check("降级环境下无写回按钮", page.locator("#btn-source-write").is_hidden())
     check("正文已导入", "v1 正文" in page.input_value("#editor"))
+
+    # ---- 没有来源的笔记不显示来源条 ----
+    page.click("#btn-back")
+    page.wait_for_selector("#list-view.active")
+    page.click("#btn-new")
+    page.wait_for_selector("#editor-view.active")
+    page.wait_for_timeout(300)
+    check("无来源笔记不显示来源条", page.locator("#source-bar").is_hidden())
+    check("无来源时 currentSource 为空", page.evaluate("() => currentSource === null"))
+    page.click("#btn-back")
+    page.wait_for_selector("#list-view.active")
 
     # ---- v2 -> v3 迁移不丢数据（独立上下文，直接调用应用的 openDB） ----
     ctx_mig = browser.new_context(viewport={"width": 390, "height": 844})

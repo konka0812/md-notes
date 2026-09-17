@@ -698,7 +698,12 @@ async function applyFileToNote(note, content, src, file) {
   const m = content.match(/^\s*#\s+(.+)$/m);
   if (m) note.title = m[1].trim();
   await putNote(note);
-  await markFileAsBaseline(src, file, content);
+  let baselineFailed = false;
+  try {
+    await markFileAsBaseline(src, file, content);
+  } catch (e) {
+    baselineFailed = true;
+  }
   const idx = notes.findIndex((x) => x.id === note.id);
   if (idx >= 0) notes[idx] = note;
   if (currentId === note.id) {
@@ -708,23 +713,26 @@ async function applyFileToNote(note, content, src, file) {
     if (isPreview) updatePreview();
   }
   await renderList();
+  if (baselineFailed) throw new Error('同步状态未能保存');
 }
 
 /* 冲突：网页与文件都改过 —— 用三选项面板代替两按钮对话框 */
 function resolveConflict(note, content, src, file) {
-  showSheet('本地与网页都有改动', [
-    { icon: 'download', label: '用本地文件覆盖', action: async () => {
-        await applyFileToNote(note, content, src, file);
-        toast('已用本地文件覆盖');
-      } },
-    { icon: 'check', label: '保留网页版', action: async () => {
-        await markFileAsBaseline(src, file, content);
-        toast('已保留网页版');
-      } },
-    { icon: 'plus', label: '都保留（文件另存为新笔记）', action: async () => {
-        await createNoteFromFile(content, file, src);
-        toast('已另存为新笔记');
-      } }
+  const guard = (fn, okMsg) => async () => {
+    try {
+      await fn();
+      toast(okMsg);
+    } catch (e) {
+      toast('操作失败：' + ((e && e.message) || '未知错误'));
+    }
+  };
+  showSheet('「' + file.name + '」本地与网页都有改动', [
+    { icon: 'download', label: '用本地文件覆盖', danger: true,
+      action: guard(() => applyFileToNote(note, content, src, file), '已用本地文件覆盖') },
+    { icon: 'check', label: '保留网页版',
+      action: guard(() => markFileAsBaseline(src, file, content), '已保留网页版') },
+    { icon: 'plus', label: '都保留（文件另存为新笔记）',
+      action: guard(() => createNoteFromFile(content, file, src), '已另存为新笔记') }
   ]);
 }
 
@@ -765,6 +773,16 @@ async function syncFromFile(file, src) {
   return 'updated';
 }
 
+/* 同步结果统一反馈（noteId 与当前笔记不一致时 refreshSourceBar 会自行忽略） */
+async function reportSyncResult(r, src) {
+  if (r === 'same') toast('已是最新');
+  else if (r === 'updated') toast('已从本地文件更新');
+  else if (r === 'missing') toast('笔记已不存在，已移除关联');
+  // 冲突面板仍开着，其操作会就地改写 src（currentSource 的同一引用）；
+  // 此时刷新 currentSource 会换成新对象，后续 markFileAsBaseline 就改不到 currentSource 了
+  if (r !== 'conflict') await refreshSourceBar(src.noteId);
+}
+
 /* 同步按钮：Chromium 用句柄，其它浏览器让用户重选同名文件 */
 async function syncCurrentSource() {
   if (!currentSource || !currentId) return;
@@ -772,13 +790,9 @@ async function syncCurrentSource() {
     try {
       let perm = await currentSource.handle.queryPermission({ mode: 'readwrite' });
       if (perm !== 'granted') perm = await currentSource.handle.requestPermission({ mode: 'readwrite' });
-      if (perm !== 'granted') { toast('未获得文件访问权限'); return; }
+      if (!perm || perm !== 'granted') { toast('未获得文件访问权限'); return; }
       const file = await currentSource.handle.getFile();
-      const r = await syncFromFile(file, currentSource);
-      if (r === 'same') toast('已是最新');
-      else if (r === 'updated') toast('已从本地文件更新');
-      else if (r === 'missing') toast('笔记已不存在，已移除关联');
-      await refreshSourceBar(currentId);
+      await reportSyncResult(await syncFromFile(file, currentSource), currentSource);
     } catch (e) {
       toast('读取失败：文件可能已被移动或删除');
     }
@@ -1580,7 +1594,7 @@ function bindEvents() {
     if (fileMd.files[0]) importMD(fileMd.files[0]).catch(() => toast('导入失败'));
     fileMd.value = '';
   });
-  fileSync.addEventListener('change', () => {
+  fileSync.addEventListener('change', async () => {
     const f = fileSync.files[0];
     if (f && pendingSyncSource) {
       const src = pendingSyncSource;
@@ -1588,12 +1602,17 @@ function bindEvents() {
       if (f.name !== src.name) {
         toast('请选择同名文件：' + src.name);
       } else {
-        syncFromFile(f, src);
+        try {
+          await reportSyncResult(await syncFromFile(f, src), src);
+        } catch (e) {
+          toast('同步失败：' + ((e && e.message) || '未知错误'));
+        }
       }
     }
     fileSync.value = '';
   });
   btnSourceSync.addEventListener('click', syncCurrentSource);
+  window.addEventListener('focus', () => { setTimeout(() => { pendingSyncSource = null; }, 0); });
   fileJson.addEventListener('change', () => {
     if (fileJson.files[0]) restoreJSON(fileJson.files[0]);
     fileJson.value = '';

@@ -153,6 +153,74 @@ with sync_playwright() as p:
     page.wait_for_selector("#list-view.active")
     check("都保留后多出一篇笔记", page.locator(".note-item").count() == 2, page.locator(".note-item").count())
 
+    # ---- 降级路径也要给出同步结果反馈 ----
+    # 上一步返回列表后 currentSource 已清空，需重新打开笔记才能取到来源
+    page.locator(".note-item").first.click()
+    page.wait_for_selector("#editor-view.active")
+    page.wait_for_timeout(300)
+    page.evaluate("() => { pendingSyncSource = currentSource; }")
+    page.set_input_files("#file-sync", {"name": "report.md", "mimeType": "text/markdown", "buffer": b"# Report\n\nv5 \xe6\x96\x87\xe4\xbb\xb6"})
+    page.wait_for_timeout(700)
+    check("降级路径反馈'已是最新'", "已是最新" in page.locator("#toast").inner_text(), page.locator("#toast").inner_text())
+
+    # ---- 选错文件名：提示且不改动基线 ----
+    before_hash = page.evaluate("async () => (await getAllSources())[0].contentHash")
+    page.evaluate("() => { pendingSyncSource = currentSource; }")
+    page.set_input_files("#file-sync", {"name": "other.md", "mimeType": "text/markdown", "buffer": b"# Other\n\nx"})
+    page.wait_for_timeout(600)
+    check("选错文件名给出提示", "请选择同名文件" in page.locator("#toast").inner_text(), page.locator("#toast").inner_text())
+    after_hash = page.evaluate("async () => (await getAllSources())[0].contentHash")
+    check("选错文件名不改动基线", before_hash == after_hash, [before_hash, after_hash])
+
+    # ---- 笔记不存在时同步会清理来源关联 ----
+    page.evaluate("""async () => {
+        await saveSource({ noteId: 'ghost-note', name: 'report.md', lastModified: 1, size: 1, contentHash: 'deadbeef', syncedAt: 1 });
+        pendingSyncSource = await getSource('ghost-note');
+    }""")
+    page.set_input_files("#file-sync", {"name": "report.md", "mimeType": "text/markdown", "buffer": b"# Report\n\nv9"})
+    page.wait_for_timeout(700)
+    ghost = page.evaluate("async () => await getSource('ghost-note')")
+    check("笔记不存在时清理来源关联", ghost is None, ghost)
+
+    # ---- Chromium 句柄路径（独立上下文，注入假句柄） ----
+    ctx_c = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    ctx_c.add_init_script("""
+        window.showOpenFilePicker = async () => [{ name: 'c.md', getFile: async () => new File(['# C\\n\\nv1'], 'c.md', { type: 'text/markdown', lastModified: 1000 }) }];
+        window.showSaveFilePicker = async () => { throw new Error('cancel'); };
+    """)
+    pc = ctx_c.new_page()
+    pc.on("pageerror", lambda e: errors.append(str(e)))
+    pc.goto(BASE, wait_until="networkidle")
+    pc.click("#btn-more")
+    pc.get_by_role("button", name="导入 Markdown (.md)", exact=True).click()
+    pc.wait_for_timeout(800)
+    pc.locator(".note-item").first.click()
+    pc.wait_for_selector("#editor-view.active")
+    pc.wait_for_timeout(300)
+    pc.evaluate("""() => {
+        currentSource.handle = {
+            queryPermission: async () => 'granted',
+            requestPermission: async () => 'granted',
+            getFile: async () => new File(['# C\\n\\n句柄同步内容'], 'c.md', { type: 'text/markdown', lastModified: 2000 })
+        };
+    }""")
+    pc.evaluate("async () => { await syncCurrentSource(); }")
+    pc.wait_for_timeout(600)
+    check("Chromium 句柄路径同步生效", "句柄同步内容" in pc.input_value("#editor"), pc.input_value("#editor")[:40])
+
+    # reportSyncResult 会用 IndexedDB 里的记录刷新 currentSource，假句柄需重新注入
+    pc.evaluate("""() => {
+        currentSource.handle = {
+            queryPermission: async () => 'denied',
+            requestPermission: async () => 'denied',
+            getFile: async () => new File(['# C\\n\\n不应写入'], 'c.md', { type: 'text/markdown', lastModified: 3000 })
+        };
+    }""")
+    pc.evaluate("async () => { await syncCurrentSource(); }")
+    pc.wait_for_timeout(400)
+    check("权限被拒时给出提示", "未获得文件访问权限" in pc.locator("#toast").inner_text(), pc.locator("#toast").inner_text())
+    ctx_c.close()
+
     # ---- v2 -> v3 迁移不丢数据（独立上下文，直接调用应用的 openDB） ----
     ctx_mig = browser.new_context(viewport={"width": 390, "height": 844})
     pm = ctx_mig.new_page()

@@ -816,6 +816,136 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
 }
 
 /* =========================================================================
+   复古打字机主题（data-style="typewriter"）—— 泛黄打字纸 × 双线边框 × 印章红
+   ========================================================================= */
+[data-style="typewriter"] {
+  --bg:        #F6F1E2;
+  --paper:     #FCF9F0;
+  --ink:       #2A241C;
+  --ink-soft:  #554A3B;
+  --ink-faint: #8A7C67;
+  --border:    #3B3228;
+  --accent:    #A8321E;
+  --accent-tint:#F0DED2;
+  --danger:    #8F2416;
+  --danger-tint:#F3DAD4;
+  --shadow-sm: 2px 2px 0 rgba(59, 50, 40, 0.18);
+  --radius:    3px;
+  --font-ui: "Courier New", Courier, "American Typewriter", "Songti SC", "STSong", "SimSun", monospace;
+  --font-content: "Courier New", Courier, "Songti SC", "STSong", "SimSun", serif;
+  --font-mono: "Courier New", Courier, Menlo, monospace;
+}
+[data-style="typewriter"][data-theme="dark"] {
+  --bg:        #16140F;
+  --paper:     #1E1B14;
+  --ink:       #E8E0C8;
+  --ink-soft:  #B9AF96;
+  --ink-faint: #7C7259;
+  --border:    #6B6045;
+  --accent:    #D9705C;
+  --accent-tint:#33291F;
+  --danger:    #E08A80;
+  --danger-tint:#3A2620;
+  --shadow-sm: 2px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* 打字纸横格纹 */
+[data-style="typewriter"] body {
+  background-image: repeating-linear-gradient(
+    180deg,
+    rgba(59, 50, 40, 0.045) 0px,
+    rgba(59, 50, 40, 0.045) 1px,
+    transparent 1px,
+    transparent 28px
+  );
+}
+[data-style="typewriter"][data-theme="dark"] body {
+  background-image: repeating-linear-gradient(
+    180deg,
+    rgba(232, 224, 200, 0.035) 0px,
+    rgba(232, 224, 200, 0.035) 1px,
+    transparent 1px,
+    transparent 28px
+  );
+}
+
+/* 双线边框：卡片 / 面板 / 对话框 / 按钮 / 搜索框 */
+[data-style="typewriter"] .note-item,
+[data-style="typewriter"] .search-wrap,
+[data-style="typewriter"] .sheet,
+[data-style="typewriter"] .dialog,
+[data-style="typewriter"] .btn,
+[data-style="typewriter"] .segmented,
+[data-style="typewriter"] .markdown-body pre {
+  border: 3px double var(--border);
+}
+[data-style="typewriter"] .note-item,
+[data-style="typewriter"] .search-wrap,
+[data-style="typewriter"] .dialog { border-radius: 3px; }
+[data-style="typewriter"] .sheet { border-radius: 6px 6px 0 0; }
+[data-style="typewriter"] .btn,
+[data-style="typewriter"] .segmented { border-radius: 3px; }
+[data-style="typewriter"] .markdown-body pre { border-radius: 3px; }
+
+/* 小控件：细双线，避免过重 */
+[data-style="typewriter"] .tool-btn,
+[data-style="typewriter"] .quickbar-btn {
+  border: 1.5px double var(--border);
+  border-radius: 3px;
+}
+[data-style="typewriter"] .markdown-body code {
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+/* FAB：双圈圆钮 */
+[data-style="typewriter"] .fab {
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--border), 2px 3px 0 5px rgba(59, 50, 40, 0.18);
+}
+[data-style="typewriter"] .icon-btn { border-radius: 50%; }
+
+/* 标题：加字距 */
+[data-style="typewriter"] .app-name,
+[data-style="typewriter"] .note-item-title,
+[data-style="typewriter"] .markdown-body h1,
+[data-style="typewriter"] .markdown-body h2,
+[data-style="typewriter"] .markdown-body h3 {
+  letter-spacing: 0.12em;
+  text-transform: none;
+}
+
+/* 标签：邮票 / 印章方块 */
+[data-style="typewriter"] .tag-chip,
+[data-style="typewriter"] .filter-chip {
+  border-radius: 0;
+  border: 1.5px solid currentColor;
+  letter-spacing: 0.1em;
+  padding: 1px 8px;
+  text-transform: uppercase;
+}
+
+/* 分割线：打字机双线 */
+[data-style="typewriter"] .markdown-body hr {
+  border: none;
+  border-top: 3px double var(--border);
+}
+[data-style="typewriter"] .tool-sep { background: var(--border); width: 2px; }
+
+/* 引用：机械缩进感 */
+[data-style="typewriter"] .markdown-body blockquote {
+  border-left: 3px double var(--accent);
+  border-radius: 0;
+  background: transparent;
+  font-style: italic;
+}
+[data-style="typewriter"] .markdown-body h1 { border-bottom: 3px double var(--border); }
+[data-style="typewriter"] .appbar { border-bottom: 3px double var(--border); }
+[data-style="typewriter"] .editor-footer,
+[data-style="typewriter"] .toolbar,
+[data-style="typewriter"] .quickbar { border-color: var(--border); }
+
+/* =========================================================================
    打印 / 导出 PDF
    ========================================================================= */
 .print-area { display: none; }

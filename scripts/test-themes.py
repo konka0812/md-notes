@@ -81,6 +81,23 @@ with sync_playwright() as p:
     s = state()
     check("未知 style 回退到纸张配色", s["color"] == "#FDFBF7", s["color"])
 
+    # ---- 打字机主题的视觉特征 ----
+    pick("复古打字机", "浅色")
+    tw = page.evaluate("""() => {
+        const cs = getComputedStyle(document.body);
+        const item = getComputedStyle(document.querySelector('.note-item') || document.body);
+        return {
+            fontUI: cs.fontFamily,
+            bg: cs.backgroundColor,
+            accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+            radius: item.borderRadius,
+            borderStyle: item.borderStyle
+        };
+    }""")
+    check("打字机 UI 字体含 Courier", "Courier" in tw["fontUI"], tw["fontUI"])
+    check("打字机 强调色为印章红", tw["accent"].upper() == "#A8321E", tw["accent"])
+    check("打字机 双线边框", "double" in tw["borderStyle"], tw["borderStyle"])
+
     browser.close()
 
 print(f"\n{sum(1 for _, c in results if c)}/{len(results)} 通过")

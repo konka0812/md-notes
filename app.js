@@ -82,7 +82,7 @@ const quickbar = $('#quickbar');
 const appNameEl = $('#app-name');
 const appSubEl = $('#app-sub');
 const btnTrashBack = $('#btn-trash-back');
-const APP_VERSION = 'v13';
+const APP_VERSION = 'v12';
 
 /* ---------------- 主题风格 ---------------- */
 const THEME_STYLES = [

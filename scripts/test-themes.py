@@ -13,10 +13,8 @@ def check(name, cond, extra=""):
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
-    page = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True, service_workers="block").new_page()
+    page = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True).new_page()
     page.on("pageerror", lambda e: errors.append(str(e)))
-    # 主题测试与版本检查无关：Task 1 阶段 version.json 尚未同步，屏蔽以免弹出更新对话框
-    page.route("**/version.json*", lambda route: route.abort())
     page.goto(BASE, wait_until="networkidle")
 
     # 先建一篇笔记，供列表卡片样式断言使用

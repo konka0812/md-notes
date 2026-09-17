@@ -36,12 +36,9 @@ with sync_playwright() as p:
 
     def pick(style_label, theme_label):
         page.click("#btn-more")
-        page.locator("#sheet .sheet-item", has_text="主题").click()
-        page.wait_for_timeout(200)
-        page.locator("#sheet .sheet-item", has_text=style_label).click()
-        page.wait_for_timeout(200)
-        page.locator("#sheet .sheet-item", has_text=theme_label).click()
-        page.wait_for_timeout(300)
+        page.get_by_role("button", name="主题", exact=True).click()
+        page.get_by_role("button", name=style_label, exact=True).click()
+        page.get_by_role("button", name=theme_label, exact=True).click()
 
     # 默认：纸张浅色
     s = state()
@@ -77,6 +74,12 @@ with sync_playwright() as p:
     pick("纸张", "深色")
     s = state()
     check("纸张 深色 theme-color", s["style"] == "" and s["theme"] == "dark" and s["color"] == "#1E1C17", str(s))
+
+    # 未知/历史 style 值应回退到纸张配色（向后兼容）
+    page.evaluate("() => { localStorage.setItem('style', 'nope'); localStorage.setItem('theme', 'light'); }")
+    page.reload(wait_until="networkidle")
+    s = state()
+    check("未知 style 回退到纸张配色", s["color"] == "#FDFBF7", s["color"])
 
     browser.close()
 

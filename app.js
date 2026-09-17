@@ -84,19 +84,6 @@ const appSubEl = $('#app-sub');
 const btnTrashBack = $('#btn-trash-back');
 const APP_VERSION = 'v12';
 
-/* ---------------- 主题风格 ---------------- */
-const THEME_STYLES = [
-  { id: '',           label: '纸张',       color: { light: '#FDFBF7', dark: '#1E1C17' } },
-  { id: 'sketch',     label: '手绘',       color: { light: '#FDFBF7', dark: '#1E1C17' } },
-  { id: 'typewriter', label: '复古打字机', color: { light: '#FCF9F0', dark: '#16140F' } },
-  { id: 'forest',     label: '森系自然',   color: { light: '#FAFCF6', dark: '#111A12' } }
-];
-function themeColorFor(theme, style) {
-  const s = THEME_STYLES.find((x) => x.id === (style || ''));
-  const base = s || THEME_STYLES[0];
-  return base.color[theme === 'dark' ? 'dark' : 'light'];
-}
-
 /* ---------------- 状态 ---------------- */
 let db = null;
 let notes = [];
@@ -1143,6 +1130,17 @@ function restoreJSON(file) {
 }
 
 /* ---------------- 主题 ---------------- */
+const THEME_STYLES = [
+  { id: '',           label: '纸张',       color: { light: '#FDFBF7', dark: '#1E1C17' } },
+  { id: 'sketch',     label: '手绘',       color: { light: '#FDFBF7', dark: '#1E1C17' } },
+  { id: 'typewriter', label: '复古打字机', color: { light: '#FCF9F0', dark: '#16140F' } },
+  { id: 'forest',     label: '森系自然',   color: { light: '#FAFCF6', dark: '#111A12' } }
+];
+function themeColorFor(theme, style) {
+  const s = THEME_STYLES.find((x) => x.id === (style || ''));
+  const base = s || THEME_STYLES[0];
+  return base.color[theme === 'dark' ? 'dark' : 'light'];
+}
 function applyTheme(t, style) {
   document.documentElement.setAttribute('data-theme', t);
   document.documentElement.setAttribute('data-style', style || '');

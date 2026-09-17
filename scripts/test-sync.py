@@ -329,6 +329,38 @@ with sync_playwright() as p:
     pw.evaluate("async () => { await refreshSourceBar(currentId); }")
     check("有句柄时来源条显示写回按钮", pw.locator("#btn-source-write").is_visible())
     pw.evaluate("() => { getSource = window.__realGetSource; }")
+
+    check("批量同步函数存在", pw.evaluate("() => typeof syncAllSources") == "function")
+    check("启动检测函数存在", pw.evaluate("() => typeof checkSourcesOnStartup") == "function")
+
+    # 此处处于编辑器视图（#btn-more 属于列表视图，不可见），直接走真实 openListMenu
+    pw.evaluate("() => openListMenu()")
+    pw.wait_for_selector("#sheet:not([hidden])")
+    labels2 = pw.locator("#sheet .sheet-item").all_inner_texts()
+    check("Chromium 菜单含'同步所有来源'", any("同步所有来源" in t for t in labels2), labels2)
+    pw.click("#sheet-cancel")
+
+    # ---- 批量同步（桩：一个带句柄、文件已更新的来源） ----
+    pw.wait_for_timeout(700)
+    pw.evaluate("""() => {
+        window.__fileContent = '# WB\\n\\n批量同步后的内容';
+        const fakeHandle = {
+            queryPermission: async () => 'granted',
+            requestPermission: async () => 'granted',
+            getFile: async () => new File([window.__fileContent], 'wb.md', { type: 'text/markdown', lastModified: 9000 }),
+            createWritable: async () => ({ write: async () => {}, close: async () => {} })
+        };
+        window.__realGetAllSources = getAllSources;
+        getAllSources = async () => [{
+            noteId: currentId, name: 'wb.md', lastModified: 5000, size: 8,
+            contentHash: hashString(editor.value), syncedAt: 1, handle: fakeHandle
+        }];
+    }""")
+    pw.evaluate("async () => { await syncAllSources(); }")
+    pw.wait_for_timeout(600)
+    check("批量同步统计更新篇数", "已同步 1 篇" in pw.locator("#toast").inner_text(), pw.locator("#toast").inner_text())
+    check("批量同步后正文更新", "批量同步后的内容" in pw.input_value("#editor"), pw.input_value("#editor")[:40])
+    pw.evaluate("() => { getAllSources = window.__realGetAllSources; }")
     ctx_wb.close()
 
     # ---- v2 -> v3 迁移不丢数据（独立上下文，直接调用应用的 openDB） ----

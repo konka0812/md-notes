@@ -759,7 +759,7 @@ async function createNoteFromFile(content, file, src) {
 }
 
 /* 用文件同步到笔记。返回 'same' | 'updated' | 'conflict' | 'missing' */
-async function syncFromFile(file, src) {
+async function syncFromFile(file, src, autoResolve = true) {
   const content = await file.text();
   if (hashString(content) === src.contentHash) {
     await markFileAsBaseline(src, file, content);
@@ -768,7 +768,10 @@ async function syncFromFile(file, src) {
   const note = await getNote(src.noteId);
   if (!note) { await deleteSource(src.noteId); return 'missing'; }
   const webChanged = hashString(note.content || '') !== src.contentHash;
-  if (webChanged) { resolveConflict(note, content, src, file); return 'conflict'; }
+  if (webChanged) {
+    if (autoResolve) resolveConflict(note, content, src, file);
+    return 'conflict';
+  }
   await applyFileToNote(note, content, src, file);
   return 'updated';
 }
@@ -874,6 +877,45 @@ async function saveAsLinkedFile() {
   } catch (e) {
     if (!e || e.name !== 'AbortError') toast('另存失败：' + ((e && e.message) || '未知错误'));
   }
+}
+
+/* 批量同步所有来源（仅 Chromium；Safari 无句柄，入口不显示） */
+async function syncAllSources() {
+  const sources = await getAllSources();
+  if (!sources.length) { toast('没有可同步的来源'); return; }
+  let updated = 0, conflicts = 0, failed = 0;
+  for (const src of sources) {
+    if (!src.handle) continue;
+    try {
+      if (await src.handle.queryPermission({ mode: 'readwrite' }) !== 'granted') continue;
+      const file = await src.handle.getFile();
+      const r = await syncFromFile(file, src, false);
+      if (r === 'updated') updated++;
+      else if (r === 'conflict') conflicts++;
+    } catch (e) {
+      failed++;
+    }
+  }
+  if (conflicts) toast(`已同步 ${updated} 篇，${conflicts} 篇有冲突需逐篇处理`);
+  else if (updated) toast(`已同步 ${updated} 篇`);
+  else toast(failed ? `同步完成，${failed} 篇读取失败` : '全部已是最新');
+  await refreshSourceBar(currentId);
+}
+
+/* 启动时静默检查已授权的句柄，提示本地文件有更新 */
+async function checkSourcesOnStartup() {
+  if (!canUseFileHandles) return;
+  try {
+    const sources = await getAllSources();
+    let n = 0;
+    for (const src of sources) {
+      if (!src.handle) continue;
+      if (await src.handle.queryPermission({ mode: 'readwrite' }) !== 'granted') continue;
+      const file = await src.handle.getFile();
+      if (file.lastModified !== src.lastModified || file.size !== src.size) n++;
+    }
+    if (n > 0) toast(`${n} 篇笔记的本地文件已更新，可在「更多 → 同步所有来源」中同步`);
+  } catch (e) { /* 忽略 */ }
 }
 
 async function openNote(id) {
@@ -1322,7 +1364,9 @@ function openListMenu() {
     { icon: 'upload', label: '导入 Markdown (.md)', action: startImportMD },
     { icon: 'database', label: '导入备份 (JSON)', action: () => fileJson.click() }
   ];
-  // 「同步所有来源」在 Task 5 追加到这里
+  if (canUseFileHandles) {
+    items.splice(items.length - 2, 0, { icon: 'refresh', label: '同步所有来源', action: syncAllSources });
+  }
   items.push({ icon: 'download', label: '安装到主屏幕', action: installApp });
   items.push({ icon: 'info', label: '关于', action: showAbout });
   showSheet('更多', items);
@@ -1725,6 +1769,7 @@ async function init() {
   await loadImageCache();
   await purgeOldTrash();
   await renderList();
+  setTimeout(checkSourcesOnStartup, 2000);
   renderQuickbar();
   registerSW();
 

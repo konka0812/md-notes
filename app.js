@@ -278,26 +278,23 @@ async function restoreNote(id) {
   const n = await getNote(id);
   if (n) { n.deletedAt = null; n.updatedAt = Date.now(); await putNote(n); }
 }
+/* 彻底删除一篇笔记，同时清理其来源关联 */
+async function purgeNote(id) {
+  await deleteNote(id);
+  await deleteSource(id);
+}
 /* 清空回收站（彻底删除） */
 async function emptyTrash() {
   const all = await getAllNotes();
   const doomed = all.filter((n) => n.deletedAt);
-  const tx = db.transaction('notes', 'readwrite');
-  const store = tx.objectStore('notes');
-  doomed.forEach((n) => store.delete(n.id));
-  await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
-  for (const n of doomed) await deleteSource(n.id);
+  for (const n of doomed) await purgeNote(n.id);
 }
 /* 自动清理：删除超过 30 天的笔记彻底清除 */
 async function purgeOldTrash() {
   const all = await getAllNotes();
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const doomed = all.filter((n) => n.deletedAt && n.deletedAt < cutoff);
-  const tx = db.transaction('notes', 'readwrite');
-  const store = tx.objectStore('notes');
-  doomed.forEach((n) => store.delete(n.id));
-  await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
-  for (const n of doomed) await deleteSource(n.id);
+  for (const n of doomed) await purgeNote(n.id);
 }
 
 /* ---------------- 图片存储（正文只存 zhimo://id 短标记，图片单独存） ---------------- */
@@ -508,7 +505,7 @@ function buildItem(n, query) {
         message: `彻底删除「${n.title || '无标题'}」？此操作不可恢复。`,
         confirmLabel: '彻底删除', danger: true,
         onConfirm: async () => {
-          await deleteNote(n.id);
+          await purgeNote(n.id);
           toast('已彻底删除');
           await renderList();
         }

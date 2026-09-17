@@ -447,6 +447,21 @@ with sync_playwright() as p:
     }""")
     check("purgeOldTrash 清理来源", pr.evaluate("async () => await getSource('old-1')") is None)
 
+    # 回收站里单篇「彻底删除」也应清理来源
+    pr.evaluate("""async () => {
+        await putNote({ id: 'one-1', title: '单篇', content: 'x', createdAt: 1, updatedAt: 1, deletedAt: Date.now() });
+        await saveSource({ noteId: 'one-1', name: 'one.md', lastModified: 1, size: 1, contentHash: 'h', syncedAt: 1 });
+        await enterTrash();
+    }""")
+    pr.wait_for_timeout(400)
+    pr.locator(".note-item-del").first.click()
+    pr.wait_for_selector("#dialog:not([hidden])")
+    pr.click("#dialog-confirm")
+    pr.wait_for_timeout(700)
+    check("单篇彻底删除清理来源", pr.evaluate("async () => (await getSource('one-1')) === null") is True)
+    pr.evaluate("async () => { await exitTrash(); }")
+    pr.wait_for_timeout(300)
+
     # 恢复含 sources 的备份后，来源仍显示文件名
     pr.evaluate("""async () => { await clearAllNotes(); await clearAllSources(); await renderList(); }""")
     payload = ('{"app":"纸墨","version":3,"notes":[{"id":"n1","title":"恢复的笔记","content":"内容",'

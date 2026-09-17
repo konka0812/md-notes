@@ -1034,8 +1034,8 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-4);
-  background: var(--bg);
+  padding: var(--sp-1) var(--sp-4);
+  background: var(--paper);
   border-bottom: 1px solid var(--border);
   font-size: 13px;
   color: var(--ink-soft);
@@ -1057,8 +1057,8 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 34px;
-  height: 34px;
+  width: var(--touch);
+  height: var(--touch);
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--paper);
@@ -1066,6 +1066,13 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
 }
 .source-btn:active { background: var(--accent-tint); color: var(--ink); }
 .source-btn svg { width: 16px; height: 16px; }
+
+/* 来源条随主题风格微调 */
+[data-style="sketch"] .source-bar { border-bottom: 2px dashed var(--border); }
+[data-style="sketch"] .source-btn { border: 2px dashed var(--border); border-radius: 14px 10px 16px 12px; }
+[data-style="typewriter"] .source-bar { border-bottom: 3px double var(--border); }
+[data-style="typewriter"] .source-btn { border-radius: 3px; border-style: solid; border-width: 2px; }
+[data-style="forest"] .source-btn { border-radius: 12px; }
 
 /* =========================================================================
    打印 / 导出 PDF

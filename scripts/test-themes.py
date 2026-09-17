@@ -123,6 +123,22 @@ with sync_playwright() as p:
     check("森系 卡片左侧苔绿色条", fo["borderLeft"] == "3px solid rgb(76, 122, 63)", fo["borderLeft"])
     check("森系 柔和阴影为森林色系", "rgba(35, 47, 30" in fo["shadow"], fo["shadow"])
 
+    # 森系：交互态高亮不能被主题规则覆盖
+    page.focus("#search")
+    ff = page.evaluate("() => getComputedStyle(document.querySelector('.search-wrap')).borderTopColor")
+    check("森系 搜索框聚焦高亮未被覆盖", ff == "rgb(76, 122, 63)", ff)
+    page.fill("#search", "")
+
+    box = page.locator(".note-item").first.bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    act = page.evaluate("""() => {
+        const cs = getComputedStyle(document.querySelector('.note-item'));
+        return cs.borderTopColor + ' | ' + cs.borderLeftColor;
+    }""")
+    page.mouse.up()
+    check("森系 卡片按下时其余三边高亮", act == "rgb(76, 122, 63) | rgb(76, 122, 63)", act)
+
     browser.close()
 
 print(f"\n{sum(1 for _, c in results if c)}/{len(results)} 通过")

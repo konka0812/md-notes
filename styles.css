@@ -990,10 +990,12 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
 [data-style="forest"] .markdown-body pre code { border-radius: 0; }
 
 /* 标题左侧绿色短竖线 */
+[data-style="forest"] .markdown-body h1 {
+  border-bottom: none;
+}
 [data-style="forest"] .markdown-body h1,
 [data-style="forest"] .markdown-body h2,
 [data-style="forest"] .markdown-body h3 {
-  border-bottom: none;
   border-left: 4px solid var(--accent);
   padding-left: 10px;
 }
@@ -1002,10 +1004,8 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
   padding-left: 8px;
 }
 
-/* 引用：柔和绿底 */
+/* 引用：柔和绿底（仅圆角与基础样式不同） */
 [data-style="forest"] .markdown-body blockquote {
-  border-left: 3px solid var(--accent);
-  background: var(--accent-tint);
   border-radius: 0 12px 12px 0;
 }
 
@@ -1013,14 +1013,6 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
 [data-style="forest"] .markdown-body hr {
   border-top: 2px dotted var(--accent);
   opacity: 0.7;
-}
-
-/* 标签：浅绿圆角 */
-[data-style="forest"] .tag-chip,
-[data-style="forest"] .filter-chip {
-  background: var(--accent-tint);
-  color: var(--accent);
-  border-radius: 999px;
 }
 
 /* FAB：绿色渐变 */

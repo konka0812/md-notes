@@ -103,7 +103,7 @@ window.addEventListener('appinstalled', () => { toast('已安装到主屏幕 ✓
 /* ---------------- IndexedDB ---------------- */
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('zhimo-notes', 2);
+    const req = indexedDB.open('zhimo-notes', 3);
     req.onupgradeneeded = () => {
       const dbx = req.result;
       if (!dbx.objectStoreNames.contains('notes')) {
@@ -112,6 +112,9 @@ function openDB() {
       }
       if (!dbx.objectStoreNames.contains('images')) {
         dbx.createObjectStore('images', { keyPath: 'id' });
+      }
+      if (!dbx.objectStoreNames.contains('sources')) {
+        dbx.createObjectStore('sources', { keyPath: 'noteId' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -155,6 +158,80 @@ function clearAllNotes() {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+}
+
+/* ---------------- 来源关联（导入的本地文件） ---------------- */
+function getSource(noteId) {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('sources', 'readonly').objectStore('sources').get(noteId);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+function getAllSources() {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('sources', 'readonly').objectStore('sources').getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+function putSource(src) {
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction('sources', 'readwrite');
+      tx.objectStore('sources').put(src);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    } catch (e) {
+      reject(e); // 句柄不可结构化克隆时会同步抛错
+    }
+  });
+}
+/* 句柄可能无法结构化克隆（非 Chromium / 权限受限），失败时降级为不含句柄保存 */
+async function saveSource(src) {
+  try {
+    await putSource(src);
+  } catch (e) {
+    if (src && src.handle) {
+      const copy = Object.assign({}, src);
+      delete copy.handle;
+      await putSource(copy);
+    } else {
+      throw e;
+    }
+  }
+}
+function deleteSource(noteId) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('sources', 'readwrite');
+    tx.objectStore('sources').delete(noteId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+function clearAllSources() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('sources', 'readwrite');
+    tx.objectStore('sources').clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+/* 把文件当前状态记为已同步基线 */
+async function markFileAsBaseline(src, file, content) {
+  src.lastModified = file.lastModified;
+  src.size = file.size;
+  src.contentHash = hashString(content);
+  src.syncedAt = Date.now();
+  await saveSource(src);
+}
+/* 备份用：剔除不可序列化的 handle */
+async function sourcesForBackup() {
+  const all = await getAllSources();
+  return all.map((s) => ({
+    noteId: s.noteId, name: s.name, lastModified: s.lastModified,
+    size: s.size, contentHash: s.contentHash, syncedAt: s.syncedAt
+  }));
 }
 
 /* 活跃笔记：未删除，置顶优先、再按更新时间倒序 */
@@ -230,6 +307,16 @@ async function loadImageCache() {
 /* ---------------- 工具 ---------------- */
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+/* 轻量字符串哈希（FNV-1a），用于判断文件内容是否变化 */
+function hashString(str) {
+  let h = 2166136261;
+  const s = String(str || '');
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
 }
 function escapeHTML(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

@@ -182,23 +182,26 @@ function putSource(src) {
       tx.objectStore('sources').put(src);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new DOMException('事务被中止', 'AbortError'));
     } catch (e) {
       reject(e); // 句柄不可结构化克隆时会同步抛错
     }
   });
 }
-/* 句柄可能无法结构化克隆（非 Chromium / 权限受限），失败时降级为不含句柄保存 */
+/* 句柄不可结构化克隆时（DataCloneError）降级为不含句柄保存。
+   返回 true 表示句柄已随记录保存，false 表示已降级为无句柄。 */
 async function saveSource(src) {
   try {
     await putSource(src);
+    return true;
   } catch (e) {
-    if (src && src.handle) {
+    if (src && src.handle && e && e.name === 'DataCloneError') {
       const copy = Object.assign({}, src);
       delete copy.handle;
       await putSource(copy);
-    } else {
-      throw e;
+      return false;
     }
+    throw e;
   }
 }
 function deleteSource(noteId) {
@@ -207,6 +210,7 @@ function deleteSource(noteId) {
     tx.objectStore('sources').delete(noteId);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new DOMException('事务被中止', 'AbortError'));
   });
 }
 function clearAllSources() {
@@ -215,15 +219,20 @@ function clearAllSources() {
     tx.objectStore('sources').clear();
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new DOMException('事务被中止', 'AbortError'));
   });
 }
-/* 把文件当前状态记为已同步基线 */
+/* 把文件当前状态记为已同步基线（写入成功后才更新传入对象） */
 async function markFileAsBaseline(src, file, content) {
-  src.lastModified = file.lastModified;
-  src.size = file.size;
-  src.contentHash = hashString(content);
-  src.syncedAt = Date.now();
-  await saveSource(src);
+  const next = Object.assign({}, src, {
+    lastModified: file.lastModified,
+    size: file.size,
+    contentHash: hashString(content),
+    syncedAt: Date.now()
+  });
+  await saveSource(next);
+  Object.assign(src, next);
+  return src;
 }
 /* 备份用：剔除不可序列化的 handle */
 async function sourcesForBackup() {

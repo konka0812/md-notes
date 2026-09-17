@@ -223,7 +223,12 @@ IndexedDB 版本由 **2 升到 3**，新增对象存储 `sources`（`keyPath: 'n
 
 - 来源条增加 `⬆ 写回` 按钮
 - 调用 `handle.createWritable()` 写入 `note.content`（需 `readwrite` 权限）
-- 写回前检查文件是否被外部修改（`lastModified` / 哈希与 `sources` 基线不符）→ 先警告再写
+- 写回前检查文件是否被外部修改：用文件当前内容的**内容哈希**与 `sources` 基线比对
+  （`hashString(await file.text()) !== src.contentHash`），与 `syncFromFile` 的判据一致；
+  不用 mtime/体积，因为它们会漏掉同等体积的编辑或 mtime 粒度粗、不更新的文件系统，
+  从而静默覆盖用户的外部改动。发现不一致 → 先警告再写
+- 入口处捕获 `src` / `noteId` / `handle`；`await saveNow()` 之后若 `noteId !== currentId`
+  直接中止，避免用户在权限/保存期间切走笔记时，把另一篇的正文写进本文件
 - 写回成功后更新 `sources` 的 `lastModified`、`size`、`contentHash`、`syncedAt`
 - **关联文件存的是笔记原文（verbatim）**，不做 `resolveImagesInText`、不补 `# 标题` 前缀，
   以保证 `hashString(note.content) === src.contentHash` 恒成立（否则每次同步都会误判冲突）。

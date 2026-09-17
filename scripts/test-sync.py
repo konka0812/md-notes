@@ -282,6 +282,17 @@ with sync_playwright() as p:
     pw.click("#dialog-confirm")
     pw.wait_for_timeout(500)
 
+    # 取消覆盖：不应写入
+    pw.evaluate("""() => {
+        window.__written = null;
+        window.__fileContent = '# WB\\n\\n又一次外部改动导致长度不同';
+    }""")
+    pw.evaluate("async () => { await writeBackCurrent(); }")
+    pw.wait_for_selector("#dialog:not([hidden])")
+    pw.click("#dialog-cancel")
+    pw.wait_for_timeout(400)
+    check("取消覆盖不写入", pw.evaluate("() => window.__written") is None)
+
     # 另存为并关联：网页新建的无来源笔记
     pw.click("#btn-back")
     pw.wait_for_selector("#list-view.active")
@@ -300,6 +311,24 @@ with sync_playwright() as p:
     check("另存为写入笔记原文", saved == "另存内容", saved)
     src_new = pw.evaluate("async () => (await getAllSources()).find((s) => s.name === 'new.md')")
     check("另存为建立来源关联", src_new is not None and src_new["name"] == "new.md", src_new)
+
+    # 来源条写回按钮的正向可见性：用桩让 getSource 返回带句柄的记录（真实路径，不伪造 DOM）
+    pw.evaluate("""() => {
+        currentSource.handle = {
+            queryPermission: async () => 'granted',
+            requestPermission: async () => 'granted',
+            getFile: async () => new File([window.__fileContent || ''], 'wb.md', { type: 'text/markdown', lastModified: 5000 }),
+            createWritable: async () => ({ write: async () => {}, close: async () => {} })
+        };
+        window.__realGetSource = getSource;
+        getSource = async (id) => ({
+            noteId: id, name: 'wb.md', lastModified: 5000, size: 8,
+            contentHash: 'h', syncedAt: 1, handle: currentSource.handle
+        });
+    }""")
+    pw.evaluate("async () => { await refreshSourceBar(currentId); }")
+    check("有句柄时来源条显示写回按钮", pw.locator("#btn-source-write").is_visible())
+    pw.evaluate("() => { getSource = window.__realGetSource; }")
     ctx_wb.close()
 
     # ---- v2 -> v3 迁移不丢数据（独立上下文，直接调用应用的 openDB） ----

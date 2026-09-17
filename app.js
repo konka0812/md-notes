@@ -805,15 +805,19 @@ async function syncCurrentSource() {
 /* 写回：把网页内容写回本地文件（仅 Chromium + 有句柄） */
 async function writeBackCurrent() {
   if (!currentSource || !currentId) return;
-  const handle = currentSource.handle;
+  const src = currentSource;
+  const noteId = currentId;
+  const handle = src.handle;
   if (!handle || !canUseFileHandles) { toast('当前浏览器不支持写回，请用「导出为 .md」'); return; }
   try {
     let perm = await handle.queryPermission({ mode: 'readwrite' });
     if (perm !== 'granted') perm = await handle.requestPermission({ mode: 'readwrite' });
     if (!perm || perm !== 'granted') { toast('未获得写入权限'); return; }
     await saveNow();
+    if (noteId !== currentId) return;   // 期间已切换笔记，避免把别的笔记正文写进这个文件
     const file = await handle.getFile();
-    const external = file.lastModified !== currentSource.lastModified || file.size !== currentSource.size;
+    const text = await file.text();
+    const external = hashString(text) !== src.contentHash;
     const content = editor.value;
     const doWrite = async () => {
       try {
@@ -821,8 +825,8 @@ async function writeBackCurrent() {
         await w.write(content);
         await w.close();
         const after = await handle.getFile();
-        await markFileAsBaseline(currentSource, after, content);
-        toast('已写回本地文件');
+        await markFileAsBaseline(src, after, content);
+        toast('已写回：' + (src.name || '本地文件'));
       } catch (e) {
         toast('写回失败：' + ((e && e.message) || '未知错误'));
       }
@@ -845,10 +849,11 @@ async function writeBackCurrent() {
 async function saveAsLinkedFile() {
   if (!canUseFileHandles) { toast('当前浏览器不支持，请用「导出为 .md」'); return; }
   if (!currentId) return;
-  await saveNow();
-  const note = await getNote(currentId);
-  const suggested = sanitizeFilename(note.title || '无标题') + '.md';
   try {
+    await saveNow();
+    const note = await getNote(currentId);
+    if (!note) { toast('笔记已不存在'); return; }
+    const suggested = sanitizeFilename(note.title || '无标题') + '.md';
     const handle = await window.showSaveFilePicker({
       suggestedName: suggested,
       types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }]

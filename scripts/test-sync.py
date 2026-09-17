@@ -361,7 +361,51 @@ with sync_playwright() as p:
     check("批量同步统计更新篇数", "已同步 1 篇" in pw.locator("#toast").inner_text(), pw.locator("#toast").inner_text())
     check("批量同步后正文更新", "批量同步后的内容" in pw.input_value("#editor"), pw.input_value("#editor")[:40])
     pw.evaluate("() => { getAllSources = window.__realGetAllSources; }")
+
+    # ---- 批量同步：有冲突时不弹面板、只计数 ----
+    pw.wait_for_timeout(700)
+    pw.evaluate("""() => {
+        window.__fileContent = '# WB\\n\\n批量冲突的文件内容';
+        const fakeHandle = {
+            queryPermission: async () => 'granted',
+            requestPermission: async () => 'granted',
+            getFile: async () => new File([window.__fileContent], 'wb.md', { type: 'text/markdown', lastModified: 9100 })
+        };
+        window.__realGetAllSources = getAllSources;
+        getAllSources = async () => [{
+            noteId: currentId, name: 'wb.md', lastModified: 5000, size: 8,
+            contentHash: hashString('与网页和文件都不同的基线'), syncedAt: 1, handle: fakeHandle
+        }];
+    }""")
+    pw.evaluate("async () => { await syncAllSources(); }")
+    pw.wait_for_timeout(600)
+    check("批量同步不弹冲突面板", pw.locator("#sheet").is_hidden())
+    check("批量同步统计冲突篇数", "1 篇有冲突" in pw.locator("#toast").inner_text(), pw.locator("#toast").inner_text())
+    pw.evaluate("() => { getAllSources = window.__realGetAllSources; }")
     ctx_wb.close()
+
+    # ---- 启动检测：2 秒后提示本地文件可能有更新 ----
+    ctx_s = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    ctx_s.add_init_script("""
+        window.showOpenFilePicker = async () => { throw new Error('stub'); };
+        window.showSaveFilePicker = async () => { throw new Error('stub'); };
+    """)
+    ps = ctx_s.new_page()
+    ps.on("pageerror", lambda e: errors.append(str(e)))
+    ps.goto(BASE, wait_until="domcontentloaded")
+    ps.evaluate("""() => {
+        getAllSources = async () => [{
+            noteId: 'x', name: 'startup.md', lastModified: 1000, size: 5,
+            contentHash: 'h', syncedAt: 1,
+            handle: {
+                queryPermission: async () => 'granted',
+                getFile: async () => new File(['12345'], 'startup.md', { type: 'text/markdown', lastModified: 9999 })
+            }
+        }];
+    }""")
+    ps.wait_for_timeout(2600)
+    check("启动检测提示可能有更新", "可能有更新" in ps.locator("#toast").inner_text(), ps.locator("#toast").inner_text())
+    ctx_s.close()
 
     # ---- v2 -> v3 迁移不丢数据（独立上下文，直接调用应用的 openDB） ----
     ctx_mig = browser.new_context(viewport={"width": 390, "height": 844})

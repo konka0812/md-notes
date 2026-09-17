@@ -896,26 +896,33 @@ async function syncAllSources() {
       failed++;
     }
   }
-  if (conflicts) toast(`已同步 ${updated} 篇，${conflicts} 篇有冲突需逐篇处理`);
-  else if (updated) toast(`已同步 ${updated} 篇`);
-  else toast(failed ? `同步完成，${failed} 篇读取失败` : '全部已是最新');
+  const parts = [];
+  if (updated) parts.push(`已同步 ${updated} 篇`);
+  if (conflicts) parts.push(`${conflicts} 篇有冲突需逐篇处理`);
+  if (failed) parts.push(`${failed} 篇读取失败`);
+  toast(parts.length ? parts.join('，') : '全部已是最新');
   await refreshSourceBar(currentId);
 }
 
-/* 启动时静默检查已授权的句柄，提示本地文件有更新 */
+/* 启动时静默检查已授权的句柄，提示本地文件可能有更新 */
 async function checkSourcesOnStartup() {
   if (!canUseFileHandles) return;
+  let sources = [];
   try {
-    const sources = await getAllSources();
-    let n = 0;
-    for (const src of sources) {
-      if (!src.handle) continue;
+    sources = await getAllSources();
+  } catch (e) {
+    return;
+  }
+  let n = 0;
+  for (const src of sources) {
+    if (!src.handle) continue;
+    try {
       if (await src.handle.queryPermission({ mode: 'readwrite' }) !== 'granted') continue;
       const file = await src.handle.getFile();
       if (file.lastModified !== src.lastModified || file.size !== src.size) n++;
-    }
-    if (n > 0) toast(`${n} 篇笔记的本地文件已更新，可在「更多 → 同步所有来源」中同步`);
-  } catch (e) { /* 忽略 */ }
+    } catch (e) { /* 单个来源失败不影响其余 */ }
+  }
+  if (n > 0) toast(`${n} 篇笔记的本地文件可能有更新，可在「更多 → 同步所有来源」中同步`);
 }
 
 async function openNote(id) {
@@ -1365,7 +1372,7 @@ function openListMenu() {
     { icon: 'database', label: '导入备份 (JSON)', action: () => fileJson.click() }
   ];
   if (canUseFileHandles) {
-    items.splice(items.length - 2, 0, { icon: 'refresh', label: '同步所有来源', action: syncAllSources });
+    items.push({ icon: 'refresh', label: '同步所有来源', action: syncAllSources });
   }
   items.push({ icon: 'download', label: '安装到主屏幕', action: installApp });
   items.push({ icon: 'info', label: '关于', action: showAbout });

@@ -54,6 +54,25 @@ with sync_playwright() as p:
     check("markFileAsBaseline 写入基线", res["mtime"] == 111 and bool(res["hash"]) and res["live"] == 111, res)
     check("备份剔除 handle", res["hasHandle"] is False, res)
 
+    # ---- 导入（降级路径）并建立来源关联 ----
+    page.evaluate("async () => await clearAllSources()")  # 清掉上面用例写入的来源夹具
+    page.set_input_files("#file-md", {"name": "report.md", "mimeType": "text/markdown", "buffer": MD_V1.encode("utf-8")})
+    page.wait_for_timeout(600)
+    check("导入后列表有1篇", page.locator(".note-item").count() == 1)
+
+    srcs = page.evaluate("async () => await getAllSources()")
+    check("来源已记录", len(srcs) == 1 and srcs[0]["name"] == "report.md", srcs)
+    check("来源记录了内容哈希", bool(srcs[0]["contentHash"]), srcs[0].get("contentHash"))
+    h_v1 = srcs[0]["contentHash"]
+
+    page.locator(".note-item").first.click()
+    page.wait_for_selector("#editor-view.active")
+    check("编辑器显示来源条", page.locator("#source-bar").is_visible())
+    check("来源条显示文件名", "report.md" in page.locator("#source-name").inner_text())
+    check("来源条有同步按钮", page.locator("#btn-source-sync").is_visible())
+    check("降级环境下无写回按钮", page.locator("#btn-source-write").is_hidden())
+    check("正文已导入", "v1 正文" in page.input_value("#editor"))
+
     # ---- v2 -> v3 迁移不丢数据（独立上下文，直接调用应用的 openDB） ----
     ctx_mig = browser.new_context(viewport={"width": 390, "height": 844})
     pm = ctx_mig.new_page()

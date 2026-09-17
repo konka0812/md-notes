@@ -58,6 +58,14 @@
       <button id="btn-editor-more" class="icon-btn" aria-label="笔记操作" data-icon="more"></button>
     </header>
 
+    <div id="source-bar" class="source-bar" hidden>
+      <span class="source-icon" data-icon="file-text"></span>
+      <span id="source-name" class="source-name"></span>
+      <span id="source-state" class="source-state"></span>
+      <button id="btn-source-sync" class="source-btn" data-icon="refresh" aria-label="从本地文件同步"></button>
+      <button id="btn-source-write" class="source-btn" data-icon="upload" aria-label="写回本地文件" hidden></button>
+    </div>
+
     <div id="toolbar" class="toolbar" role="toolbar" aria-label="格式工具栏"></div>
 
     <div class="editor-body">
@@ -105,6 +113,7 @@
   <input type="file" id="file-md" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
   <input type="file" id="file-json" accept=".json,application/json" hidden>
   <input type="file" id="file-image" accept="image/*" hidden>
+  <input type="file" id="file-sync" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
 
   <!-- 打印 / 导出 PDF 专用区域（屏幕隐藏，打印时显示） -->
   <div id="print-area" class="print-area" aria-hidden="true"></div>

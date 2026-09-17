@@ -39,6 +39,7 @@ const ICONS = {
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
+  refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>',
   palette: '<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/><circle cx="7.5" cy="11.5" r=".5" fill="currentColor"/><circle cx="10.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="14.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>'
 };
 
@@ -76,6 +77,12 @@ const toastEl = $('#toast');
 const fileMd = $('#file-md');
 const fileJson = $('#file-json');
 const fileImage = $('#file-image');
+const fileSync = $('#file-sync');
+const sourceBar = $('#source-bar');
+const sourceNameEl = $('#source-name');
+const sourceStateEl = $('#source-state');
+const btnSourceSync = $('#btn-source-sync');
+const btnSourceWrite = $('#btn-source-write');
 const filterBar = $('#filter-bar');
 const printArea = $('#print-area');
 const quickbar = $('#quickbar');
@@ -96,6 +103,12 @@ let currentPinned = false;
 let currentTags = [];
 let currentTag = null;      // 当前按标签筛选
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
+
+/* 能力检测：仅 Chromium 支持文件句柄 */
+const canUseFileHandles = typeof window.showOpenFilePicker === 'function' &&
+                          typeof window.showSaveFilePicker === 'function';
+let currentSource = null;      // 当前笔记的来源记录
+let pendingSyncSource = null;  // 等待用户选文件的同步目标
 
 /* 安装完成提示（通过浏览器菜单安装后触发） */
 window.addEventListener('appinstalled', () => { toast('已安装到主屏幕 ✓'); });
@@ -656,6 +669,24 @@ function exitTrash() {
 }
 
 /* ---------------- 编辑器 ---------------- */
+/* ---------------- 来源条 ---------------- */
+async function refreshSourceBar() {
+  if (!currentId) {
+    currentSource = null;
+    sourceBar.hidden = true;
+    return;
+  }
+  currentSource = await getSource(currentId);
+  if (!currentSource) {
+    sourceBar.hidden = true;
+    return;
+  }
+  sourceBar.hidden = false;
+  sourceNameEl.textContent = currentSource.name || '未命名文件';
+  sourceStateEl.textContent = '已同步';
+  btnSourceWrite.hidden = !(canUseFileHandles && currentSource.handle);
+}
+
 async function openNote(id) {
   const note = await getNote(id);
   if (!note) return;
@@ -672,6 +703,7 @@ async function openNote(id) {
   editorView.classList.add('active');
   window.scrollTo(0, 0);
   requestAnimationFrame(() => { (note.title ? editor : titleInput).focus(); });
+  await refreshSourceBar();
 }
 
 async function newNote() {
@@ -706,6 +738,8 @@ function scheduleSave() {
 
 async function exitToNotes() {
   currentId = null;
+  currentSource = null;
+  sourceBar.hidden = true;
   currentCreatedAt = null;
   clearTimeout(saveTimer);
   isPreview = false;
@@ -1096,11 +1130,12 @@ function openListMenu() {
     { icon: 'palette', label: '主题', action: showThemePicker },
     { icon: 'download', label: '导出全部为 .md', action: exportAll },
     { icon: 'database', label: '备份为 JSON', action: backupJSON },
-    { icon: 'upload', label: '导入 Markdown (.md)', action: () => fileMd.click() },
-    { icon: 'database', label: '导入备份 (JSON)', action: () => fileJson.click() },
-    { icon: 'download', label: '安装到主屏幕', action: installApp },
-    { icon: 'info', label: '关于', action: showAbout }
+    { icon: 'upload', label: '导入 Markdown (.md)', action: startImportMD },
+    { icon: 'database', label: '导入备份 (JSON)', action: () => fileJson.click() }
   ];
+  // 「同步所有来源」在 Task 5 追加到这里
+  items.push({ icon: 'download', label: '安装到主屏幕', action: installApp });
+  items.push({ icon: 'info', label: '关于', action: showAbout });
   showSheet('更多', items);
 }
 
@@ -1173,18 +1208,40 @@ function backupJSON() {
   toast('已备份为 JSON');
 }
 
-function importMD(file) {
-  const reader = new FileReader();
-  reader.onload = async () => {
-    const content = String(reader.result || '');
-    const baseName = file.name.replace(/\.(md|markdown|txt)$/i, '');
-    const m = content.match(/^\s*#\s+(.+)$/m);
-    const title = m ? m[1].trim() : baseName;
-    await putNote({ id: uid(), title, content, createdAt: Date.now(), updatedAt: Date.now() });
-    await renderList();
-    toast('已导入：' + title);
-  };
-  reader.readAsText(file);
+async function importMD(file, handle) {
+  const content = await file.text();
+  const baseName = file.name.replace(/\.(md|markdown|txt)$/i, '');
+  const m = content.match(/^\s*#\s+(.+)$/m);
+  const title = m ? m[1].trim() : baseName;
+  const note = { id: uid(), title, content, createdAt: Date.now(), updatedAt: Date.now() };
+  await putNote(note);
+  await saveSource({
+    noteId: note.id,
+    name: file.name,
+    lastModified: file.lastModified,
+    size: file.size,
+    contentHash: hashString(content),
+    syncedAt: Date.now(),
+    handle: handle || undefined
+  });
+  await renderList();
+  toast('已导入：' + title);
+}
+
+/* 导入入口：Chromium 取文件句柄以便后续同步，其它浏览器走 input 降级 */
+async function startImportMD() {
+  if (canUseFileHandles) {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.txt'] } }],
+        multiple: false
+      });
+      const file = await handle.getFile();
+      await importMD(file, handle);
+    } catch (e) { /* 用户取消，忽略 */ }
+    return;
+  }
+  fileMd.click();
 }
 
 function restoreJSON(file) {
@@ -1409,6 +1466,19 @@ function bindEvents() {
   fileMd.addEventListener('change', () => {
     if (fileMd.files[0]) importMD(fileMd.files[0]);
     fileMd.value = '';
+  });
+  fileSync.addEventListener('change', () => {
+    const f = fileSync.files[0];
+    if (f && pendingSyncSource) {
+      const src = pendingSyncSource;
+      pendingSyncSource = null;
+      if (f.name !== src.name) {
+        toast('请选择同名文件：' + src.name);
+      } else {
+        syncFromFile(f, src);
+      }
+    }
+    fileSync.value = '';
   });
   fileJson.addEventListener('change', () => {
     if (fileJson.files[0]) restoreJSON(fileJson.files[0]);

@@ -281,19 +281,23 @@ async function restoreNote(id) {
 /* 清空回收站（彻底删除） */
 async function emptyTrash() {
   const all = await getAllNotes();
+  const doomed = all.filter((n) => n.deletedAt);
   const tx = db.transaction('notes', 'readwrite');
   const store = tx.objectStore('notes');
-  all.filter((n) => n.deletedAt).forEach((n) => store.delete(n.id));
-  return new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+  doomed.forEach((n) => store.delete(n.id));
+  await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+  for (const n of doomed) await deleteSource(n.id);
 }
 /* 自动清理：删除超过 30 天的笔记彻底清除 */
 async function purgeOldTrash() {
   const all = await getAllNotes();
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const doomed = all.filter((n) => n.deletedAt && n.deletedAt < cutoff);
   const tx = db.transaction('notes', 'readwrite');
   const store = tx.objectStore('notes');
-  all.filter((n) => n.deletedAt && n.deletedAt < cutoff).forEach((n) => store.delete(n.id));
-  return new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+  doomed.forEach((n) => store.delete(n.id));
+  await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+  for (const n of doomed) await deleteSource(n.id);
 }
 
 /* ---------------- 图片存储（正文只存 zhimo://id 短标记，图片单独存） ---------------- */
@@ -1449,9 +1453,10 @@ function exportAll() {
   toast(`已导出 ${notes.length} 篇`);
 }
 
-function backupJSON() {
+async function backupJSON() {
   const images = Object.entries(imageCache).map(([id, dataUrl]) => ({ id, dataUrl }));
-  const data = { app: '纸墨', version: 2, exportedAt: new Date().toISOString(), notes, images };
+  const sources = await sourcesForBackup();
+  const data = { app: '纸墨', version: 3, exportedAt: new Date().toISOString(), notes, images, sources };
   const date = new Date().toISOString().slice(0, 10);
   download(`纸墨备份-${date}.json`, JSON.stringify(data, null, 2), 'application/json;charset=utf-8');
   toast('已备份为 JSON');
@@ -1526,6 +1531,17 @@ function restoreJSON(file) {
           if (img && img.id && img.dataUrl) {
             await putImage(img.id, img.dataUrl);
             imageCache[img.id] = img.dataUrl;
+          }
+        }
+        // 恢复来源关联（不含文件句柄，需重新关联后才能同步）
+        await clearAllSources();
+        const sources = Array.isArray(data.sources) ? data.sources : [];
+        for (const s of sources) {
+          if (s && s.noteId) {
+            await saveSource({
+              noteId: s.noteId, name: s.name || '', lastModified: s.lastModified || 0,
+              size: s.size || 0, contentHash: s.contentHash || '', syncedAt: s.syncedAt || Date.now()
+            });
           }
         }
         if (currentId) { currentId = null; clearTimeout(saveTimer); }

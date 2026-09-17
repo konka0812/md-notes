@@ -407,6 +407,52 @@ with sync_playwright() as p:
     check("启动检测提示可能有更新", "可能有更新" in ps.locator("#toast").inner_text(), ps.locator("#toast").inner_text())
     ctx_s.close()
 
+    # ---- 备份与恢复：sources 兼容 ----
+    ctx_r = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    ctx_r.add_init_script("Object.defineProperty(window, 'showOpenFilePicker', { value: undefined, configurable: true });")
+    pr = ctx_r.new_page()
+    pr.on("pageerror", lambda e: errors.append(str(e)))
+    pr.goto(BASE, wait_until="networkidle")
+
+    # 先导入一篇，确保存在来源记录
+    pr.set_input_files("#file-md", {"name": "bk.md", "mimeType": "text/markdown", "buffer": b"# BK\n\n\xe5\xa4\x87\xe4\xbb\xbd"})
+    pr.wait_for_timeout(700)
+    check("备份前已有来源", pr.evaluate("async () => (await getAllSources()).length") == 1)
+    check("备份数据不含 handle", pr.evaluate("async () => (await sourcesForBackup()).every((s) => !('handle' in s))") is True)
+
+    # 彻底删除笔记时应清理来源
+    pr.evaluate("""async () => {
+        const src = (await getAllSources())[0];
+        await softDelete(src.noteId);
+        await emptyTrash();
+    }""")
+    check("彻底删除后清理来源", pr.evaluate("async () => (await getAllSources()).length") == 0)
+
+    # 过期笔记的自动清理也应清理来源
+    pr.evaluate("""async () => {
+        await putNote({ id: 'old-1', title: '过期', content: 'x', createdAt: 1, updatedAt: 1, deletedAt: Date.now() - 31 * 24 * 3600 * 1000 });
+        await saveSource({ noteId: 'old-1', name: 'old.md', lastModified: 1, size: 1, contentHash: 'h', syncedAt: 1 });
+        await purgeOldTrash();
+    }""")
+    check("purgeOldTrash 清理来源", pr.evaluate("async () => await getSource('old-1')") is None)
+
+    # 恢复含 sources 的备份后，来源仍显示文件名
+    pr.evaluate("""async () => { await clearAllNotes(); await clearAllSources(); await renderList(); }""")
+    payload = ('{"app":"纸墨","version":3,"notes":[{"id":"n1","title":"恢复的笔记","content":"内容",'
+               '"createdAt":1,"updatedAt":2}],"images":[],"sources":[{"noteId":"n1","name":"restored.md",'
+               '"lastModified":1700000000000,"size":10,"contentHash":"abc","syncedAt":1700000000000}]}')
+    pr.set_input_files("#file-json", {"name": "backup.json", "mimeType": "application/json", "buffer": payload.encode("utf-8")})
+    pr.wait_for_selector("#dialog:not([hidden])")
+    pr.click("#dialog-confirm")
+    pr.wait_for_timeout(800)
+    check("恢复后笔记存在", pr.locator(".note-item").count() == 1, pr.locator(".note-item").count())
+    pr.locator(".note-item").first.click()
+    pr.wait_for_selector("#editor-view.active")
+    pr.wait_for_timeout(400)
+    check("恢复后来源条显示文件名", "restored.md" in pr.locator("#source-name").inner_text())
+    check("恢复后无句柄则无写回按钮", pr.locator("#btn-source-write").is_hidden())
+    ctx_r.close()
+
     # ---- v2 -> v3 迁移不丢数据（独立上下文，直接调用应用的 openDB） ----
     ctx_mig = browser.new_context(viewport={"width": 390, "height": 844})
     pm = ctx_mig.new_page()

@@ -86,17 +86,26 @@ with sync_playwright() as p:
     tw = page.evaluate("""() => {
         const cs = getComputedStyle(document.body);
         const item = getComputedStyle(document.querySelector('.note-item') || document.body);
+        const search = getComputedStyle(document.querySelector('.search-wrap') || document.body);
         return {
             fontUI: cs.fontFamily,
-            bg: cs.backgroundColor,
             accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
-            radius: item.borderRadius,
-            borderStyle: item.borderStyle
+            itemBorderStyle: item.borderTopStyle,
+            itemBorderWidth: item.borderTopWidth,
+            searchBorderStyle: search.borderTopStyle
         };
     }""")
     check("打字机 UI 字体含 Courier", "Courier" in tw["fontUI"], tw["fontUI"])
     check("打字机 强调色为印章红", tw["accent"].upper() == "#A8321E", tw["accent"])
-    check("打字机 双线边框", "double" in tw["borderStyle"], tw["borderStyle"])
+    check("打字机 卡片双线边框", tw["itemBorderStyle"] == "double" and tw["itemBorderWidth"] == "3px",
+          tw["itemBorderStyle"] + " " + tw["itemBorderWidth"])
+    check("打字机 搜索框双线边框", tw["searchBorderStyle"] == "double", tw["searchBorderStyle"])
+
+    # 交互态高亮不能被主题边框规则覆盖
+    page.focus("#search")
+    fc = page.evaluate("() => getComputedStyle(document.querySelector('.search-wrap')).borderTopColor")
+    check("打字机 搜索框聚焦高亮未被覆盖", fc == "rgb(168, 50, 30)", fc)
+    page.fill("#search", "")
 
     browser.close()
 

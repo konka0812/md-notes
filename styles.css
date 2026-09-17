@@ -849,8 +849,9 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
   --shadow-sm: 2px 2px 0 rgba(0, 0, 0, 0.5);
 }
 
-/* 打字纸横格纹 */
+/* 打字纸横格纹（scroll 而非 fixed，让格纹随内容滚动） */
 [data-style="typewriter"] body {
+  background-attachment: scroll;
   background-image: repeating-linear-gradient(
     180deg,
     rgba(59, 50, 40, 0.045) 0px,
@@ -869,7 +870,7 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
   );
 }
 
-/* 双线边框：卡片 / 面板 / 对话框 / 按钮 / 搜索框 */
+/* 双线边框：用长写属性，避免 border 简写覆盖 :active / :focus-within 的 border-color */
 [data-style="typewriter"] .note-item,
 [data-style="typewriter"] .search-wrap,
 [data-style="typewriter"] .sheet,
@@ -877,26 +878,27 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
 [data-style="typewriter"] .btn,
 [data-style="typewriter"] .segmented,
 [data-style="typewriter"] .markdown-body pre {
-  border: 3px double var(--border);
+  border-style: double;
+  border-width: 3px;
 }
-[data-style="typewriter"] .note-item,
+/* 这两个组件基础样式未声明 border-color，需显式指定；其余沿用基础色以便交互态高亮生效 */
+[data-style="typewriter"] .sheet,
+[data-style="typewriter"] .btn { border-color: var(--border); }
+
 [data-style="typewriter"] .search-wrap,
 [data-style="typewriter"] .dialog { border-radius: 3px; }
 [data-style="typewriter"] .sheet { border-radius: 6px 6px 0 0; }
-[data-style="typewriter"] .btn,
 [data-style="typewriter"] .segmented { border-radius: 3px; }
+[data-style="typewriter"] .seg { border-radius: 2px; }
 [data-style="typewriter"] .markdown-body pre { border-radius: 3px; }
 
-/* 小控件：细双线，避免过重 */
+/* 小控件：2px 实线（double 在小于 3px 时不会渲染成双线） */
 [data-style="typewriter"] .tool-btn,
 [data-style="typewriter"] .quickbar-btn {
-  border: 1.5px double var(--border);
+  border: 2px solid var(--border);
   border-radius: 3px;
 }
-[data-style="typewriter"] .markdown-body code {
-  border: 1px solid var(--border);
-  border-radius: 2px;
-}
+[data-style="typewriter"] .markdown-body code { border-radius: 2px; }
 
 /* FAB：双圈圆钮 */
 [data-style="typewriter"] .fab {
@@ -912,7 +914,6 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
 [data-style="typewriter"] .markdown-body h2,
 [data-style="typewriter"] .markdown-body h3 {
   letter-spacing: 0.12em;
-  text-transform: none;
 }
 
 /* 标签：邮票 / 印章方块 */
@@ -927,10 +928,9 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
 
 /* 分割线：打字机双线 */
 [data-style="typewriter"] .markdown-body hr {
-  border: none;
   border-top: 3px double var(--border);
 }
-[data-style="typewriter"] .tool-sep { background: var(--border); width: 2px; }
+[data-style="typewriter"] .tool-sep { width: 2px; }
 
 /* 引用：机械缩进感 */
 [data-style="typewriter"] .markdown-body blockquote {
@@ -941,9 +941,6 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
 }
 [data-style="typewriter"] .markdown-body h1 { border-bottom: 3px double var(--border); }
 [data-style="typewriter"] .appbar { border-bottom: 3px double var(--border); }
-[data-style="typewriter"] .editor-footer,
-[data-style="typewriter"] .toolbar,
-[data-style="typewriter"] .quickbar { border-color: var(--border); }
 
 /* =========================================================================
    打印 / 导出 PDF

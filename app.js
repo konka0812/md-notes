@@ -802,6 +802,75 @@ async function syncCurrentSource() {
   fileSync.click();
 }
 
+/* 写回：把网页内容写回本地文件（仅 Chromium + 有句柄） */
+async function writeBackCurrent() {
+  if (!currentSource || !currentId) return;
+  const handle = currentSource.handle;
+  if (!handle || !canUseFileHandles) { toast('当前浏览器不支持写回，请用「导出为 .md」'); return; }
+  try {
+    let perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (!perm || perm !== 'granted') { toast('未获得写入权限'); return; }
+    await saveNow();
+    const file = await handle.getFile();
+    const external = file.lastModified !== currentSource.lastModified || file.size !== currentSource.size;
+    const content = editor.value;
+    const doWrite = async () => {
+      try {
+        const w = await handle.createWritable();
+        await w.write(content);
+        await w.close();
+        const after = await handle.getFile();
+        await markFileAsBaseline(currentSource, after, content);
+        toast('已写回本地文件');
+      } catch (e) {
+        toast('写回失败：' + ((e && e.message) || '未知错误'));
+      }
+    };
+    if (external) {
+      confirmDialog({
+        message: '本地文件在外部被修改过，写回会覆盖这些改动。确定继续？',
+        confirmLabel: '覆盖写入', danger: true,
+        onConfirm: doWrite
+      });
+    } else {
+      await doWrite();
+    }
+  } catch (e) {
+    toast('写回失败：' + ((e && e.message) || '未知错误'));
+  }
+}
+
+/* 另存为本地文件并建立关联（仅 Chromium），使网页新建的笔记也能写回 */
+async function saveAsLinkedFile() {
+  if (!canUseFileHandles) { toast('当前浏览器不支持，请用「导出为 .md」'); return; }
+  if (!currentId) return;
+  await saveNow();
+  const note = await getNote(currentId);
+  const suggested = sanitizeFilename(note.title || '无标题') + '.md';
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: suggested,
+      types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }]
+    });
+    const text = note.content || '';
+    const w = await handle.createWritable();
+    await w.write(text);
+    await w.close();
+    const file = await handle.getFile();
+    const src = {
+      noteId: note.id, name: file.name, lastModified: file.lastModified,
+      size: file.size, contentHash: hashString(text), syncedAt: Date.now()
+    };
+    src.handle = handle;
+    await saveSource(src);
+    await refreshSourceBar(currentId);
+    toast('已另存并关联：' + file.name);
+  } catch (e) {
+    if (!e || e.name !== 'AbortError') toast('另存失败：' + ((e && e.message) || '未知错误'));
+  }
+}
+
 async function openNote(id) {
   const note = await getNote(id);
   if (!note) return;
@@ -1268,6 +1337,11 @@ function openEditorMenu() {
   ];
   if (currentSource) {
     items.push({ icon: 'refresh', label: '同步本地文件', action: syncCurrentSource });
+    if (canUseFileHandles && currentSource.handle) {
+      items.push({ icon: 'upload', label: '写回本地文件', action: writeBackCurrent });
+    }
+  } else if (canUseFileHandles) {
+    items.push({ icon: 'link', label: '另存为本地文件并关联', action: saveAsLinkedFile });
   }
   items.push({ icon: isDark ? 'sun' : 'moon', label: '切换深色 / 浅色', action: toggleTheme });
   items.push({ icon: 'trash', label: '删除此篇', danger: true, action: confirmDeleteCurrent });
@@ -1612,6 +1686,7 @@ function bindEvents() {
     fileSync.value = '';
   });
   btnSourceSync.addEventListener('click', syncCurrentSource);
+  btnSourceWrite.addEventListener('click', writeBackCurrent);
   window.addEventListener('focus', () => { setTimeout(() => { pendingSyncSource = null; }, 0); });
   fileJson.addEventListener('change', () => {
     if (fileJson.files[0]) restoreJSON(fileJson.files[0]);

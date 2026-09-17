@@ -225,12 +225,17 @@ IndexedDB 版本由 **2 升到 3**，新增对象存储 `sources`（`keyPath: 'n
 - 调用 `handle.createWritable()` 写入 `note.content`（需 `readwrite` 权限）
 - 写回前检查文件是否被外部修改（`lastModified` / 哈希与 `sources` 基线不符）→ 先警告再写
 - 写回成功后更新 `sources` 的 `lastModified`、`size`、`contentHash`、`syncedAt`
+- **关联文件存的是笔记原文（verbatim）**，不做 `resolveImagesInText`、不补 `# 标题` 前缀，
+  以保证 `hashString(note.content) === src.contentHash` 恒成立（否则每次同步都会误判冲突）。
+  因此关联文件可能含 `zhimo://…` 图片标记，它是**同步目标**而非可移植导出；
+  「导出为 .md」仍是可移植路径（会解析图片并补标题）
 - Safari 无写回能力：按钮隐藏，改用现有「导出为 .md」作为等价手动方案
 
 ## 2.5 反向关联（另存为本地文件并关联）
 
 - 编辑器菜单增加「另存为本地文件并关联」
-- 使用 `showSaveFilePicker` 新建文件，写入当前笔记内容，取得句柄并存入 `sources`
+- 使用 `showSaveFilePicker` 新建文件，写入当前笔记内容（同样是**原文 verbatim**，理由见 §2.4），
+  取得句柄并存入 `sources`
 - 之后该笔记即可使用「同步」与「写回」，双向闭环
 - 仅 Chromium 可用；Safari 下隐藏该项
 

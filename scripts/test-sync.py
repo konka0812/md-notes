@@ -221,6 +221,87 @@ with sync_playwright() as p:
     check("权限被拒时给出提示", "未获得文件访问权限" in pc.locator("#toast").inner_text(), pc.locator("#toast").inner_text())
     ctx_c.close()
 
+    # ---- 降级环境：不应出现写回/另存为入口 ----
+    page.click("#btn-editor-more")
+    page.wait_for_selector("#sheet:not([hidden])")
+    labels = page.locator("#sheet .sheet-item").all_inner_texts()
+    check("降级环境菜单含'同步本地文件'", any("同步本地文件" in t for t in labels), labels)
+    check("降级环境菜单无'写回本地文件'", not any("写回本地文件" in t for t in labels), labels)
+    check("降级环境菜单无'另存为本地文件并关联'", not any("另存为本地文件" in t for t in labels), labels)
+    page.click("#sheet-cancel")
+    check("降级环境来源条无写回按钮", page.locator("#btn-source-write").is_hidden())
+
+    # ---- Chromium 写回 / 另存为（独立上下文，注入假句柄） ----
+    ctx_wb = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    ctx_wb.add_init_script("""
+        window.showOpenFilePicker = async () => [{ name: 'wb.md', getFile: async () => new File([window.__fileContent || '# WB\\n\\nv1'], 'wb.md', { type: 'text/markdown', lastModified: 5000 }) }];
+        window.showSaveFilePicker = async () => ({
+            name: 'new.md',
+            getFile: async () => new File([window.__written || ''], 'new.md', { type: 'text/markdown', lastModified: 6000 }),
+            createWritable: async () => ({ write: async (t) => { window.__written = t; }, close: async () => {} })
+        });
+    """)
+    pw = ctx_wb.new_page()
+    pw.on("pageerror", lambda e: errors.append(str(e)))
+    pw.goto(BASE, wait_until="networkidle")
+    pw.click("#btn-more")
+    pw.get_by_role("button", name="导入 Markdown (.md)", exact=True).click()
+    pw.wait_for_timeout(800)
+    pw.locator(".note-item").first.click()
+    pw.wait_for_selector("#editor-view.active")
+    pw.wait_for_timeout(300)
+
+    # 注入可用句柄后，菜单应出现「写回本地文件」
+    pw.evaluate("""() => {
+        currentSource.handle = {
+            queryPermission: async () => 'granted',
+            requestPermission: async () => 'granted',
+            getFile: async () => new File([window.__fileContent || '# WB\\n\\nv1'], 'wb.md', { type: 'text/markdown', lastModified: 5000 }),
+            createWritable: async () => ({ write: async (t) => { window.__written = t; }, close: async () => {} })
+        };
+    }""")
+    pw.click("#btn-editor-more")
+    pw.wait_for_selector("#sheet:not([hidden])")
+    labels_wb = pw.locator("#sheet .sheet-item").all_inner_texts()
+    check("有句柄时菜单含写回入口", any("写回本地文件" in t for t in labels_wb), labels_wb)
+    pw.click("#sheet-cancel")
+
+    # 写回：编辑器内容应写入文件
+    pw.fill("#editor", "# WB\n\n网页写回内容")
+    pw.wait_for_timeout(700)
+    pw.evaluate("async () => { await writeBackCurrent(); }")
+    pw.wait_for_timeout(500)
+    written = pw.evaluate("() => window.__written")
+    check("写回内容为编辑器内容", written is not None and "网页写回内容" in written, written)
+
+    # 文件在外部变化时先弹确认
+    pw.evaluate("() => { window.__fileContent = '# WB\\n\\n外部改动导致长度不同'; }")
+    pw.evaluate("async () => { await writeBackCurrent(); }")
+    pw.wait_for_selector("#dialog:not([hidden])")
+    check("外部改动时提示覆盖", "覆盖" in pw.locator("#dialog-message").inner_text(), pw.locator("#dialog-message").inner_text())
+    pw.click("#dialog-confirm")
+    pw.wait_for_timeout(500)
+
+    # 另存为并关联：网页新建的无来源笔记
+    pw.click("#btn-back")
+    pw.wait_for_selector("#list-view.active")
+    pw.click("#btn-new")
+    pw.wait_for_selector("#editor-view.active")
+    pw.fill("#note-title", "网页新笔记")
+    pw.fill("#editor", "另存内容")
+    pw.wait_for_timeout(700)
+    pw.click("#btn-editor-more")
+    pw.wait_for_selector("#sheet:not([hidden])")
+    labels_new = pw.locator("#sheet .sheet-item").all_inner_texts()
+    check("无来源笔记菜单含另存为关联", any("另存为本地文件并关联" in t for t in labels_new), labels_new)
+    pw.get_by_role("button", name="另存为本地文件并关联", exact=True).click()
+    pw.wait_for_timeout(800)
+    saved = pw.evaluate("() => window.__written")
+    check("另存为写入笔记原文", saved == "另存内容", saved)
+    src_new = pw.evaluate("async () => (await getAllSources()).find((s) => s.name === 'new.md')")
+    check("另存为建立来源关联", src_new is not None and src_new["name"] == "new.md", src_new)
+    ctx_wb.close()
+
     # ---- v2 -> v3 迁移不丢数据（独立上下文，直接调用应用的 openDB） ----
     ctx_mig = browser.new_context(viewport={"width": 390, "height": 844})
     pm = ctx_mig.new_page()

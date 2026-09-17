@@ -920,7 +920,7 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
 [data-style="typewriter"] .tag-chip,
 [data-style="typewriter"] .filter-chip {
   border-radius: 0;
-  border: 1.5px solid currentColor;
+  border: 1px solid currentColor;
   letter-spacing: 0.1em;
   padding: 1px 8px;
   text-transform: uppercase;

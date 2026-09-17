@@ -943,6 +943,99 @@ mark { background: var(--accent-tint); color: var(--ink); border-radius: 3px; pa
 [data-style="typewriter"] .appbar { border-bottom: 3px double var(--border); }
 
 /* =========================================================================
+   森系自然主题（data-style="forest"）—— 米绿纸面 × 大圆角 × 苔绿强调
+   ========================================================================= */
+[data-style="forest"] {
+  --bg:        #F1F5EC;
+  --paper:     #FAFCF6;
+  --ink:       #232F1E;
+  --ink-soft:  #4E5C46;
+  --ink-faint: #889180;
+  --border:    #DCE5D2;
+  --accent:    #4C7A3F;
+  --accent-tint:#E4EFDB;
+  --danger:    #B3261E;
+  --danger-tint:#F6E3E1;
+  --shadow-sm: 0 1px 2px rgba(35, 47, 30, 0.05), 0 4px 12px rgba(35, 47, 30, 0.07);
+  --radius:    18px;
+}
+[data-style="forest"][data-theme="dark"] {
+  --bg:        #111A12;
+  --paper:     #18211A;
+  --ink:       #DCE8D4;
+  --ink-soft:  #A8B8A0;
+  --ink-faint: #6E7C68;
+  --border:    #2A382C;
+  --accent:    #8FBF7A;
+  --accent-tint:#24331F;
+  --danger:    #F2B8B5;
+  --danger-tint:#33231F;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+/* 卡片左侧色条（--radius 已提供 18px 圆角，无需重复声明） */
+[data-style="forest"] .note-item {
+  border-left: 3px solid var(--accent);
+}
+[data-style="forest"] .search-wrap,
+[data-style="forest"] .dialog { border-radius: 18px; }
+[data-style="forest"] .sheet { border-radius: 24px 24px 0 0; }
+[data-style="forest"] .btn,
+[data-style="forest"] .quickbar-btn,
+[data-style="forest"] .tool-btn { border-radius: 12px; }
+[data-style="forest"] .segmented { border-radius: 14px; }
+[data-style="forest"] .seg { border-radius: 10px; }
+[data-style="forest"] .markdown-body pre,
+[data-style="forest"] .markdown-body code { border-radius: 10px; }
+[data-style="forest"] .markdown-body pre code { border-radius: 0; }
+
+/* 标题左侧绿色短竖线 */
+[data-style="forest"] .markdown-body h1,
+[data-style="forest"] .markdown-body h2,
+[data-style="forest"] .markdown-body h3 {
+  border-bottom: none;
+  border-left: 4px solid var(--accent);
+  padding-left: 10px;
+}
+[data-style="forest"] .note-item-title {
+  border-left: 3px solid var(--accent);
+  padding-left: 8px;
+}
+
+/* 引用：柔和绿底 */
+[data-style="forest"] .markdown-body blockquote {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-tint);
+  border-radius: 0 12px 12px 0;
+}
+
+/* 分割线：绿色点线 */
+[data-style="forest"] .markdown-body hr {
+  border-top: 2px dotted var(--accent);
+  opacity: 0.7;
+}
+
+/* 标签：浅绿圆角 */
+[data-style="forest"] .tag-chip,
+[data-style="forest"] .filter-chip {
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-radius: 999px;
+}
+
+/* FAB：绿色渐变 */
+[data-style="forest"] .fab {
+  background: linear-gradient(150deg, var(--accent), #35602D);
+  color: #FFFFFF;
+  border-radius: 20px;
+  box-shadow: 0 6px 18px rgba(76, 122, 63, 0.35);
+}
+[data-style="forest"][data-theme="dark"] .fab {
+  background: linear-gradient(150deg, var(--accent), #5E8F4C);
+  color: #14200F;
+}
+
+/* =========================================================================
    打印 / 导出 PDF
    ========================================================================= */
 .print-area { display: none; }

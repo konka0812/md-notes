@@ -107,6 +107,20 @@ with sync_playwright() as p:
     check("打字机 搜索框聚焦高亮未被覆盖", fc == "rgb(168, 50, 30)", fc)
     page.fill("#search", "")
 
+    # ---- 森系主题的视觉特征 ----
+    pick("森系自然", "浅色")
+    fo = page.evaluate("""() => {
+        const item = getComputedStyle(document.querySelector('.note-item') || document.body);
+        return {
+            accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+            radius: item.borderRadius,
+            shadow: item.boxShadow
+        };
+    }""")
+    check("森系 强调色为苔绿", fo["accent"].upper() == "#4C7A3F", fo["accent"])
+    check("森系 大圆角(>=16px)", float(fo["radius"].replace("px", "").split()[0]) >= 16, fo["radius"])
+    check("森系 柔和阴影(无硬偏移)", "0px 0px" in fo["shadow"] or "rgba" in fo["shadow"], fo["shadow"])
+
     browser.close()
 
 print(f"\n{sum(1 for _, c in results if c)}/{len(results)} 通过")
